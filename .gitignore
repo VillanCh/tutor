@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.tutor/
+projects/
+outputs/
+dist/
+coverage/
+*.log
+*.mp4
+*.wav
+*.mp3
+credentials*
+settings.local.json

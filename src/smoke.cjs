@@ -8,7 +8,7 @@ module.exports = async function smoke(reportFile, version) {
   const { DEFAULTS } = require('./config.cjs');
   const { startServer } = require('./server.cjs');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tutor-release-check-'));
-  let server;
+  let server, playbackWindow;
   try {
     const source = path.join(dir, 'source.mp4');
     await run(FFMPEG, [
@@ -76,6 +76,27 @@ module.exports = async function smoke(reportFile, version) {
     });
     if (!result.verification.passed) throw Error('Packaged video verification failed');
     server = await startServer({ dataDir: path.join(dir, 'projects') });
+    const playbackProject = await server.store.create(result.output, '', '成片播放检查');
+    const { BrowserWindow } = require('electron');
+    playbackWindow = new BrowserWindow({
+      show: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    await playbackWindow.loadURL(server.url + '/');
+    const playback = await playbackWindow.webContents
+      .executeJavaScript(`new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.preload = 'auto';
+      const timer = setTimeout(() => reject(Error('Desktop video decoding timed out')), 15000);
+      video.onloadeddata = () => { clearTimeout(timer); resolve({ width: video.videoWidth, height: video.videoHeight, readyState: video.readyState }); video.remove(); };
+      video.onerror = () => { clearTimeout(timer); reject(Error('Desktop video decoding failed: ' + video.error?.code + ' ' + video.error?.message)); video.remove(); };
+      video.src = ${JSON.stringify(server.url + '/api/projects/' + playbackProject.id + '/source')};
+      document.body.appendChild(video);
+    })`);
+    if (!playback.width || playback.readyState < 2) throw Error('Desktop video did not decode');
+    playbackWindow.destroy();
+    playbackWindow = null;
     const htmlResponse = await fetch(server.url + '/');
     const html = await htmlResponse.text();
     if (!htmlResponse.ok || !html.includes('assets/') || html.includes('__TUTOR_TOKEN__'))
@@ -112,6 +133,7 @@ module.exports = async function smoke(reportFile, version) {
         ffmpeg: true,
         ffprobe: true,
         videoDecode: true,
+        desktopVideoPlayback: true,
         silentNarrationGap: true,
         frontendAssets: assets.length,
         documentImportModule: true,
@@ -121,6 +143,7 @@ module.exports = async function smoke(reportFile, version) {
     };
     await fs.writeFile(reportFile, JSON.stringify(report, null, 2));
   } finally {
+    playbackWindow?.destroy();
     server?.close();
     if (
       path.dirname(path.resolve(dir)) !== path.resolve(os.tmpdir()) ||

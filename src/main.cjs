@@ -144,5 +144,7 @@ app
     dialog.showErrorBox('Tutor 启动失败', error.message);
     app.quit();
   });
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  if (!process.argv.includes('--smoke-test')) app.quit();
+});
 app.on('before-quit', () => studio?.close());

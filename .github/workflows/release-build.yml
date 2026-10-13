@@ -28,6 +28,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Download native Electron runtime
+        run: node node_modules/electron/install.js
       - name: Download compiled UI from release draft
         env:
           GH_TOKEN: ${{ github.token }}
@@ -35,6 +37,7 @@ jobs:
         run: |
           VERSION=$(node -p 'require("./package.json").version')
           gh release download "v$VERSION" --pattern "tutor-ui-v$VERSION.zip" --output tutor-ui.zip
+          mkdir -p dist/ui
           if [ "$RUNNER_OS" = "Windows" ]; then
             powershell -NoProfile -Command 'Expand-Archive -Path tutor-ui.zip -DestinationPath dist/ui'
           else

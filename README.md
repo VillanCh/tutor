@@ -15,30 +15,40 @@
 
 ## 启动
 
-需要 Node.js 22.12 或以上。首次安装会下载 Electron、FFmpeg 和 FFprobe。
+需要 Node.js 22.12 或以上。首次安装会下载 Electron、FFmpeg 和 FFprobe。React 工作台使用真实的 ReactBits Pro App UI，界面构建需要你自己的 Pro 授权。
 
     npm install
+    # 在 .env.local 填写 REACTBITS_LICENSE_KEY，密钥不要提交到 Git
+    npm run setup-ui
     npm start
 
-桌面工作台的“模型与配音设置”可配置三个角色的模型、接口、Key 和参考价格。公开代码默认使用百炼通用地址，不包含个人业务空间地址或任何预置密钥。首次启动可用 QWEN_BASE_ORIGIN 指定业务空间域名，本机已保存的设置优先。共享 Key 和独立 Key 使用 Electron safeStorage 加密后保存在本机用户数据目录，不进入仓库，也不会返回到页面。
+Windows 安装依赖和组件后也可以双击 start.cmd 启动。它会使用 Electron 自带的 Node 运行时构建界面，不依赖系统中旧版本的 Node，也不需要重新输入已保存的模型 Key。
+
+ReactBits Pro 的源码、Agent Kit、授权密钥与构建产物按许可证仅保存在本地，公开仓库包含 Tutor 的业务代码和组件安装、适配脚本。npm run setup-ui 从官方授权注册表获取源码，再生成与 Tutor API 连接的组件；没有复制付费源码到仓库。仅使用 CLI 制作视频不需要 ReactBits 授权。
+
+采用 App Shell 9、AI Chat 2、Wizard 1、Agent Approval 1、Agent Activity 1 和 AI Usage 1，并应用 Agent Kit Terminal Dark 的颜色、层次、字体与动效规则。组件保持独立滚动区域；对话、审核和费用数据来自真实后端。标准表单、对话框和提示使用 shadcn/ui。所有前端源文件也是 JavaScript / JSX。
+
+桌面工作台的“模型与制作设置”提供百炼源和自定义源。每个源配置 Chat 地址、语音协议、语音地址与 Key，三个角色分别选择源并继承连接设置；模型名称和参考价格独立配置。旧版的接口与独立凭据自动迁移，音频缓存继续复用。公开代码默认使用百炼通用地址，不包含个人业务空间地址或任何预置密钥。首次启动可用 QWEN_BASE_ORIGIN 指定业务空间域名，本机已保存的设置优先。各源的 Key 使用 Electron safeStorage 加密保存在本机用户数据目录，不进入仓库，也不会返回到页面。
 
 API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修改项目数据位置。桌面模式会保留加密凭据；CLI 模式只使用本次进程的环境变量，不写入明文密钥。
 
 ## 工作台
 
-左侧：选择视频、粘贴或导入知识、查看 AI 对话、提出剧本修改要求。
+顶栏：导入素材 → 对话改稿 → 审核制作 → 导出成片，当前阶段和下一步操作都明确显示。桌面窗口采用沉浸式深色标题栏，应用顶栏可拖动，保留系统的最小化、最大化、关闭与窗口吸附。
 
-右侧：分镜编辑、对应源画面、格式化 JSON Dump、原始与成品视频预览，以及文件导出。
+左侧：AI 对话与修改建议。模型中间输出显示在独立 JSON 代码框中，完整内容可滚动、选择与复制，显示当前阶段及 Token 估计；最终说明仍以正文显示。点选右侧分镜后，“让 AI 改这一段”将段落名称放入对话框；Enter 发送，Shift + Enter 换行，Ctrl + K 聚焦输入。
 
-顶部：阶段进度、接口实际输入输出 Token、当前生成 Token 估计、请求与响应载荷流量和估算费用。未知的计费用量保持未知，不记为零成本。
+右侧：导入视频与知识、分镜时间轴、解说编辑、对应原片时间点、大画面原始与成品预览、格式化 JSON Dump 和制作记录。
 
-底部：人工确认开关与开始制作。AI 不能代替人工确认。
+底栏和制作记录：接口实际输入输出 Token、当前生成 Token 估计、调用次数、请求与响应载荷流量和估算费用。未知的计费用量保持未知，不记为零成本。
+
+审核对话框：确认当前版本后才进行配音和制作。未保存的编辑不能用于制作，AI 不能代替人工确认。
 
 ## 配音与风格
 
 - 模型：qwen-audio-3.1-tts-flash。
-- 默认男声：龙安朗，longanlang_v3.1。
-- 女声备选：许言初，xuyanchu_v3.1。
+- 界面“沉稳男声”：龙安朗，longanlang_v3.1，默认使用。
+- 界面“解说女声”：许言初，xuyanchu_v3.1。
 - 48 kHz WAV，中性普通话教程指令，默认语速 1.0。
 - Yak 米白底、墨色文字、橙色和陶土色点缀、衬线章节标题、大录屏区域、底部字幕和章节时间轴。
 
@@ -46,13 +56,15 @@ API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修
 
 ## 自定义接口与 AI Balance
 
-将服务商改为“自定义 / AI Balance”，分别填写实际的模型名称、地址和 Key：
+在设置中点“添加自定义源”，填写源名称（例如 AI Balance）、实际地址和 Key，再将需要的模型切换到此源：
 
 - 视觉与改写模型：OpenAI Chat 协议，地址填到 /v1 或 compatible-mode/v1，程序追加 /chat/completions。
 - 百炼原生 TTS：地址填完整 SpeechSynthesizer 端点。
 - OpenAI Speech TTS：地址填到 /v1，程序追加 /audio/speech。
 
-网关必须实际支持所选模型和视频输入或语音输出。声线名称以对应服务商支持的值为准。本项目没有硬编码或声称已验证未知 AI Balance 端点。
+Chat 和语音不是同一个协议：Omni 与 Max 请求 /chat/completions；默认 Qwen TTS 请求百炼 SpeechSynthesizer。网关必须实际支持所选模型和视频输入或语音输出。声线名称以对应服务商支持的值为准。本项目没有硬编码或声称已验证未知 AI Balance 端点。
+
+高级 JSON 中 sources 是连接设置的来源，roles 使用 sourceId 选择源，baseUrl、protocol、credential 会据此解析。新增源可暂时留空，选中的源必须有对应接口地址。输入完整的 /chat/completions 或 /audio/speech 地址也会在保存时自动规范化。
 
 ## CLI
 
@@ -65,6 +77,7 @@ API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修
 
 可单独启动浏览器工作台：
 
+    npm run build
     node src/cli.cjs studio --data ./projects
 
 不要让多个进程同时写同一项目数据目录。
@@ -73,14 +86,29 @@ API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修
 
 每个确认版本使用独立输出目录，保留 tutorial.mp4、subtitles.srt、script.json、edit-plan.json、cost.json、verification.json、approval.json、config.json 和 narration.wav。逐段 WAV 按内容与模型参数缓存，取消后可重试，复用缓存不会重复调用 TTS。
 
-项目保存初稿、Max 修订、视觉校对和人工编辑历史。源视频、生成文件、知识及密钥均保存在用户目录，Git 忽略项目数据与媒体。
+项目保存初稿、Max 修订、视觉校对和人工编辑历史。导入时会复制源视频并记录 SHA256，确认后修改素材或知识将无法直接复用确认。源视频、生成文件、知识及密钥均保存在用户目录，Git 忽略项目数据与媒体。桌面应用会记住上一次的工作目录。
+
+## Windows 发行包
+
+GitHub Releases 提供 Windows 10/11 x64 安装程序与免安装 ZIP。下载发行包不需要 Node.js、FFmpeg 或 ReactBits 授权；首次打开在设置中填写自己的模型 API Key。当前版本未做代码签名。
+
+在有 ReactBits Pro 授权且已安装组件的 Windows x64 开发环境中：
+
+    npm run release:win
+
+生成 release/Tutor-VERSION-windows-x64-setup.exe、portable.zip 和 SHA256SUMS.txt。打包只携带编译后的应用界面、业务代码、运行时依赖和媒体工具；不携带组件 JSX、Agent Kit、密钥、个人设置或素材。FFmpeg/FFprobe 放在 resources/tools，原生 Canvas 模块解包到 app.asar.unpacked。许可证与媒体来源在 resources/licenses。
+
+发行包可独立检查原生模块、真实视频合成与解码、静音间隔、文档模块和界面资源；不调用计费模型：
+
+    Tutor.exe --smoke-test C:/Temp/tutor-release-check.json
 
 ## 验证
 
     npm run check
+    npm run build
     npm test
 
-测试覆盖模型配置、时间范围、人工确认与撤销、缓存 Token 计费、长解说的静音间隔，以及真实 FFmpeg 的等比画面合成与解码。
+测试覆盖模型源迁移、路由及 Key 继承、音频缓存兼容、时间范围、人工确认与撤销、缓存 Token 计费、长解说的静音间隔，以及真实 FFmpeg 的等比画面合成与解码。
 
 参考：
 
@@ -88,3 +116,6 @@ API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修
 - [百炼 TTS HTTP API](https://help.aliyun.com/zh/model-studio/qwen-audio-tts-http-api)
 - [模型价格](https://help.aliyun.com/zh/model-studio/model-pricing)
 - [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
+- [ReactBits Pro App UI](https://pro.reactbits.dev/docs/app-ui)
+- [ReactBits Pro Agent Kit](https://pro.reactbits.dev/docs/agent-kit)
+- [ReactBits Pro 许可证](https://pro.reactbits.dev/license)

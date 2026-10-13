@@ -1,27 +1,14 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="tutor-token" content="__TUTOR_TOKEN__"><title>Tutor · 教学视频工作台</title><link rel="stylesheet" href="/style.css"></head>
-<body>
-<header><div class="brand">YAK <span>TUTOR</span></div><div class="tagline">把操作录屏整理成教程</div><nav><button id="new-project">新建创作</button><button id="settings-open">模型与配音设置</button></nav></header>
-<section class="metrics"><div><span>输入 Token</span><strong id="tokens-in">0</strong></div><div><span>输出 Token</span><strong id="tokens-out">0</strong><small id="stream-count"></small></div><div><span>上传 / 下载载荷</span><strong id="traffic">0 / 0 MB</strong></div><div><span>参考费用</span><strong id="cost">¥0.0000</strong><small id="unpriced"></small></div><div class="stage-metric"><span id="stage">等待素材</span><progress id="progress" max="100" value="0"></progress><small id="progress-value">0%</small></div></section>
-<main>
-<aside>
-<div class="pane-label"><span>01 / 创作与 AI 操作</span><select id="project-select"><option value="">选择创作项目</option></select></div>
-<section class="input-panel"><h2>素材与知识</h2><div class="path-row"><input id="source" placeholder="选择录屏视频或填写本地路径"><button id="choose-video">选择视频</button></div><label for="knowledge">知识参考</label><textarea id="knowledge" rows="5" placeholder="补充产品说明、术语和注意事项。模型会用这些知识修订剧本。"></textarea><div class="row"><button id="choose-knowledge">导入 TXT / MD / DOCX</button><button id="save-knowledge" class="subtle">保存知识</button></div><button id="prepare" class="primary wide">生成初稿并完成模型修订</button><p class="note">Omni 看视频 → Max 修订 → Omni 复核 → 人工确认</p></section>
-<section class="chat-panel"><h2>修改剧本</h2><div id="chat" class="chat"><p class="empty">可以说“把第二章讲解简化”“保留登录后的操作”“删掉没有展示的结论”。</p></div><textarea id="message" rows="3" placeholder="告诉 AI 要改哪一段、如何修改"></textarea><div class="row"><button id="edit" class="primary">修改并重新校对</button><button id="cancel" class="subtle">停止任务</button></div></section>
-<details class="stream-box"><summary>查看模型生成过程</summary><pre id="stream">模型开始生成后，内容会实时显示在这里。</pre></details>
-<div id="error" class="error" hidden></div>
-</aside>
-<div id="divider" title="拖动调整工作区宽度"></div>
-<article>
-<div class="right-head"><div><span class="eyebrow">02 / 剧本与视频</span><h1 id="project-title">创建你的第一条教程</h1></div><span id="status" class="badge">等待素材</span></div>
-<div class="workflow"><span id="step-draft">01 初稿</span><span id="step-max">02 Max 修订</span><span id="step-audit">03 视频校对</span><span id="step-human">04 人工确认</span><span id="step-render">05 生成成品</span></div>
-<div class="tabs"><button class="active" data-tab="script">剧本预览</button><button data-tab="dump">JSON Dump</button><button data-tab="video">视频预览</button><button data-tab="exports">导出与用量</button></div>
-<section id="tab-script" class="tab-panel active"><div id="script-toolbar" class="script-toolbar"><span id="revision">尚无剧本</span><button id="save-script">保存人工编辑</button></div><div id="review"></div><div id="script-content" class="script-content"><div class="welcome"><div class="serif">从一段操作录屏开始</div><p>补充知识，让三个模型完成初稿与校对。<br>你可以逐段修改、查看对应画面，再确认制作。</p><div class="welcome-rule"></div><p class="mono">VIDEO + KNOWLEDGE → SCRIPT → REVIEW → TUTORIAL</p></div></div></section>
-<section id="tab-dump" class="tab-panel"><div class="row"><span>完整结构化剧本</span><button id="save-json">保存 JSON 编辑</button><button id="copy-json">复制</button><button id="download-json">导出 JSON</button></div><textarea id="json-editor" spellcheck="false" placeholder="生成剧本后，可在这里查看或直接编辑完整 JSON。"></textarea></section>
-<section id="tab-video" class="tab-panel"><div class="row"><button id="show-source" class="active">原始素材</button><button id="show-output">生成视频</button><span id="video-caption"></span></div><video id="video" controls preload="metadata"></video><div id="video-chapters"></div></section>
-<section id="tab-exports" class="tab-panel"><h2>生产文件</h2><div id="exports" class="export-grid"><p>生成完成后，可导出 MP4、字幕、剧本和成本记录。</p></div><h2>模型调用记录</h2><div class="usage-scroll"><table><thead><tr><th>阶段 / 模型</th><th>输入</th><th>输出</th><th>载荷 MB</th><th>估算 ¥</th></tr></thead><tbody id="usage"></tbody></table></div><p class="note">费用使用可配置参考单价，未扣免费额度与折扣。载荷流量统计请求、响应和音频下载字节，不包含 HTTP 头。未返回用量的调用显示未知。</p></section>
-<footer class="approval"><label><input type="checkbox" id="human-check">我已检查当前剧本的操作事实和解说内容</label><div><span id="approval-state">生成后须人工确认</span><button id="approve-render" class="primary">确认剧本并开始制作</button></div></footer>
-</article>
-</main>
-<dialog id="settings"><div class="dialog-head"><h2>模型与配音设置</h2><button id="settings-close">关闭</button></div><p>三个角色分别配置接口、模型和 Key。百炼预设已填入，可改成 AI Balance 或其他兼容接口。</p><div class="row"><select id="provider"><option value="bailian">百炼</option><option value="custom">自定义 / AI Balance</option></select><span id="key-state"></span></div><label>共享 API Key<input id="api-key" type="password" autocomplete="off" placeholder="已保存时留空即可"></label><div id="roles-settings"></div><div class="settings-grid"><label>配音音色<select id="voice"><option value="longanlang_v3.1">龙安朗 · 男声</option><option value="xuyanchu_v3.1">许言初 · 女声</option></select></label><label>语速<input id="voice-rate" type="number" min=".5" max="2" step=".05"></label></div><label>播报指令<textarea id="voice-instruction" rows="3"></textarea></label><div class="row"><button id="settings-save" class="primary">保存设置</button><span id="settings-result"></span></div></dialog>
-<script src="/app.js"></script></body></html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="tutor-token" content="__TUTOR_TOKEN__" />
+    <meta name="color-scheme" content="dark" />
+    <title>Tutor · 教学视频工作台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.jsx"></script>
+  </body>
+</html>

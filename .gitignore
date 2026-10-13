@@ -6,6 +6,8 @@ node_modules/
 projects/
 outputs/
 dist/
+release/
+build/generated/
 coverage/
 *.log
 *.mp4
@@ -13,3 +15,12 @@ coverage/
 *.mp3
 credentials*
 settings.local.json
+# Licensed ReactBits Pro source and Agent Kit stay on the licensed developer's machine.
+src/ui/vendor/
+.agents/
+.claude/
+SKILL.md
+LICENSE.md
+prompts/
+recipes/
+reactbits.local.json

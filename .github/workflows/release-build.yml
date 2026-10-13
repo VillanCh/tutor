@@ -54,13 +54,15 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: '1'
       - name: Build and smoke-test native distribution
         run: node scripts/release.cjs --prebuilt-ui
+      - name: Upload verified packages to release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/upload-release.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: Tutor-${{ matrix.platform }}
           if-no-files-found: error
           path: |
-            release/*.exe
-            release/*.zip
-            release/*.dmg
             release/verification-*.json
             release/SHA256SUMS-*.txt

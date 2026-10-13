@@ -153,6 +153,21 @@ async function verify() {
   const verification = JSON.parse(await fs.readFile(report, 'utf8'));
   if (!verification.passed || verification.version !== version)
     throw Error('Invalid smoke-test report');
+  verification.sourceCommit = (
+    await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: root })
+  ).stdout.trim();
+  verification.frontendAssets = {};
+  const { extractFile } = require('@electron/asar');
+  for (const entry of entries.filter((entry) =>
+    /[/\\]dist[/\\]ui[/\\]assets[/\\].*\.(js|css|svg)$/.test(entry),
+  )) {
+    const relative = entry.replaceAll('\\', '/').replace(/^\//, '');
+    verification.frontendAssets[path.basename(relative)] = crypto
+      .createHash('sha256')
+      .update(extractFile(path.join(resources, 'app.asar'), relative))
+      .digest('hex');
+  }
+  await fs.writeFile(report, JSON.stringify(verification, null, 2));
   const platform = process.platform === 'darwin' ? 'macOS' : 'windows';
   const files = (await fs.readdir(path.join(root, 'release')))
     .filter(

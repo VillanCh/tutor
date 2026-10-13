@@ -164,7 +164,7 @@ async function verify() {
     const relative = entry.replaceAll('\\', '/').replace(/^\//, '');
     verification.frontendAssets[path.basename(relative)] = crypto
       .createHash('sha256')
-      .update(extractFile(path.join(resources, 'app.asar'), relative))
+      .update(extractFile(path.join(resources, 'app.asar'), relative.split('/').join(path.sep)))
       .digest('hex');
   }
   await fs.writeFile(report, JSON.stringify(verification, null, 2));

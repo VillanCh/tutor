@@ -57,6 +57,25 @@ class Provider {
         body,
         signal,
       });
+      if (role.protocol === 'openai-speech') {
+        const input = response.headers.get('X-AIBalance-Input-Tokens'),
+          output = response.headers.get('X-AIBalance-Output-Tokens');
+        if (
+          input !== null &&
+          output !== null &&
+          /^\d+$/.test(input) &&
+          /^\d+$/.test(output) &&
+          Number.isSafeInteger(Number(input)) &&
+          Number.isSafeInteger(Number(output)) &&
+          Number.isSafeInteger(Number(input) + Number(output))
+        ) {
+          reported = {
+            input_tokens: Number(input),
+            output_tokens: Number(output),
+            total_tokens: Number(input) + Number(output),
+          };
+        }
+      }
       if (!response.ok) {
         const message = await response.text();
         bytes = Buffer.byteLength(message);
@@ -97,7 +116,7 @@ class Provider {
       bytes = data.length;
       if (role.protocol === 'openai-speech') {
         await this.record(
-          usageRecord(role, stage, null, Buffer.byteLength(body), bytes, Date.now() - start),
+          usageRecord(role, stage, reported, Buffer.byteLength(body), bytes, Date.now() - start),
         );
         return data;
       }

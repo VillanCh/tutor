@@ -23,6 +23,7 @@ async function build() {
   try {
     const info = JSON.parse(await fs.readFile(path.join(output, 'build-info.json'), 'utf8'));
     if (
+      info.recipe === 2 &&
       info.x264Commit === commit &&
       info.ffmpegVersion === '6.1.1' &&
       info.arch === process.arch
@@ -91,6 +92,7 @@ async function build() {
     '--enable-gpl',
     '--enable-version3',
     '--enable-libx264',
+    '--enable-zlib',
     '--disable-shared',
     '--enable-static',
     '--disable-doc',
@@ -112,6 +114,7 @@ async function build() {
     path.join(output, 'build-info.json'),
     JSON.stringify(
       {
+        recipe: 2,
         ffmpegVersion: '6.1.1',
         x264Commit: commit,
         arch: process.arch,

@@ -121,3 +121,47 @@ test('custom source sends chat and speech to actual routes with its own key', as
   assert.equal(records.length, 2);
   assert.equal(progress.at(-1).streamText, '{"ok":true}');
 });
+
+test('OpenAI speech records real gateway usage, including already billed delivery failures', async (t) => {
+  for (const [name, status, input, output, reported] of [
+    ['success', 200, '10', '2', true],
+    ['billed download failure', 424, '10', '2', true],
+    ['missing usage', 200, null, null, false],
+    ['invalid usage', 200, '-1', '2', false],
+    ['overflow', 200, '9007199254740991', '2', false],
+  ]) {
+    await t.test(name, async (t) => {
+      const server = http.createServer((req, res) => {
+        req.resume();
+        if (input !== null) res.setHeader('X-AIBalance-Input-Tokens', input);
+        if (output !== null) res.setHeader('X-AIBalance-Output-Tokens', output);
+        res.writeHead(status);
+        res.end(status === 200 ? 'test-audio' : 'audio_download_failed');
+      });
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      t.after(() => new Promise((resolve) => server.close(resolve)));
+      const config = validateConfig(DEFAULTS);
+      config.roles.speech = {
+        ...config.roles.speech,
+        protocol: 'openai-speech',
+        baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1',
+      };
+      const records = [];
+      const provider = new Provider(
+        config,
+        { [config.roles.speech.credential]: 'test-key' },
+        async (record) => records.push(record),
+      );
+      if (status === 200)
+        assert.equal((await provider.speech('hello', 'tts')).toString(), 'test-audio');
+      else await assert.rejects(provider.speech('hello', 'tts'), /424/);
+      assert.equal(records.length, 1);
+      assert.equal(records[0].usage_reported, reported);
+      assert.equal(records[0].input_tokens, reported ? 10 : 0);
+      assert.equal(records[0].output_tokens, reported ? 2 : 0);
+      if (reported) assert.equal(records[0].total_tokens, 12);
+      else assert.equal(records[0].estimated_cny, null);
+      assert.equal(Boolean(records[0].error), status !== 200);
+    });
+  }
+});

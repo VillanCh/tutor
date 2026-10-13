@@ -34,6 +34,7 @@ test('legacy workspace endpoints, independent credentials and cached speech surv
 
 test('source changes propagate to its models and pasted complete routes are normalized', () => {
   let config = validateConfig(DEFAULTS);
+  config = selectRoleSource(config, 'editor', 'bailian');
   const typing = updateSource(config, 'bailian', { chatBaseUrl: 'https:/' });
   assert.equal(typing.sources[0].chatBaseUrl, 'https:/');
   config = updateSource(config, 'bailian', {

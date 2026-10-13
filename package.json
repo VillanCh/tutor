@@ -1,6 +1,6 @@
 {
   "name": "tutor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Yak 风格的三模型教学视频工作台",
   "author": {
     "name": "VillanCh",
@@ -18,7 +18,9 @@
     "setup-ui": "node scripts/install-reactbits.cjs",
     "adapt-ui": "node scripts/adapt-reactbits.cjs",
     "ui:dev": "vite --host 127.0.0.1",
-    "release:win": "node scripts/release.cjs"
+    "release:win": "node scripts/release.cjs",
+    "release:mac": "node scripts/release.cjs",
+    "release:verify": "node scripts/release.cjs --verify-only"
   },
   "engines": {
     "node": ">=22.12"

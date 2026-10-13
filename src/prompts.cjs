@@ -29,7 +29,7 @@ const RULES =
 const CONTRACT =
   '输出结构：' +
   JSON.stringify(SHAPE) +
-  '。chapter 从0开始，场景按章节顺序排列，章节1到5个，通常3个。每章先有title场景（无源起止、motion_mode=static），再有action或observe。action提供真实source_start/source_end秒数，动作原速normal；只有冗余等待可compress。解说20到60字，分段讲述。解说比动作长时程序会在hold_at定格，hold_at必须在该片段内且还未跳到下一页面。静态观察使用observe、motion_mode=freeze、freeze_at。场景ID唯一。留出无声观察段与0.7秒静音缓冲。配色、版面、声音由固定预设决定，不要生成渲染代码。所有时间不得超出素材真实时长。';
+  '。chapter 从0开始，场景按章节顺序排列，章节1到5个，通常3个。每章先有title场景（无源起止、motion_mode=static），再有action或observe。action提供真实source_start/source_end秒数，动作原速normal；只有冗余等待可compress。解说20到60字，分段讲述。解说比动作长时程序会在hold_at定格，hold_at必须在该片段内且还未跳到下一页面。静态观察使用observe、motion_mode=freeze、freeze_at；这种模式只需有效freeze_at，source_start/source_end/hold_at必须为null，不需要源区间。连续观察使用observe、motion_mode=normal及真实source_start/source_end。所有定格点必须满足0<=freeze_at<素材duration，源片段0<=source_start<source_end<=duration。场景ID唯一。留出无声观察段与0.7秒静音缓冲。配色、版面、声音由固定预设决定，不要生成渲染代码。所有时间不得超出素材真实时长。';
 function draftPrompt(info, knowledge) {
   return (
     RULES +
@@ -42,11 +42,13 @@ function draftPrompt(info, knowledge) {
     '\n</knowledge>'
   );
 }
-function editPrompt(script, knowledge, request) {
+function editPrompt(script, knowledge, request, info) {
   return (
     RULES +
     '\n' +
     CONTRACT +
+    '\n素材信息：' +
+    JSON.stringify(info || {}) +
     '\n你负责修订错误、知识问题和表达，不能凭空添加素材操作。保留有据可查的时间点，完整返回修订后的剧本。\n用户修改要求：' +
     request +
     '\n知识参考：\n<knowledge>' +
@@ -60,7 +62,7 @@ function reviewPrompt(script, info, knowledge) {
     RULES +
     '\n' +
     CONTRACT +
-    '\n现在对照真实视频逐段校对剧本。特别检查按钮、时间点、前后顺序和知识解释。可直接纠正有证据的错误。返回 {"script":完整修订剧本,"issues":[{"scene":"s01","severity":"warning或blocking","message":"问题说明"}],"summary":"校对摘要"}。blocking表示必须在人工确认前解决的确定错误；看不清且已保守处理可以warning。不要因为视频没执行后续任务就要求补录，把未执行的内容从解说移除。\n素材信息：' +
+    '\n现在对照真实视频逐段校对剧本。特别检查按钮、时间点、前后顺序和知识解释。可直接纠正有证据的错误。返回 {"script":完整修订剧本,"issues":[{"scene":"s01","severity":"warning或blocking","message":"当前返回剧本仍存在的问题"}],"corrections":[{"scene":"s01","message":"本次已完成的修正"}],"summary":"校对摘要"}。issues只描述你返回的最终剧本中尚未解决的问题；已修正的问题必须放入corrections，不得继续标为blocking。blocking表示当前版本必须在人工确认前解决的确定错误；看不清且已保守处理可以warning。严格遵守上面冻结模式只需freeze_at的规则，不要要求定格场景提供source_start/source_end。不要因为视频没执行后续任务就要求补录，把未执行的内容从解说移除。\n素材信息：' +
     JSON.stringify(info) +
     '\n知识：<knowledge>' +
     knowledge +

@@ -57,7 +57,11 @@ function normalizeScript(input, videoDuration) {
       end = null,
       freeze = null,
       hold = null;
-    if (mode === 'freeze') freeze = time(s.freeze_at, '定格时间');
+    if (mode === 'freeze') {
+      freeze = time(s.freeze_at, '定格时间');
+      if (freeze >= videoDuration)
+        throw Error('场景 ' + id + ' 的定格时间必须早于视频结束：' + freeze + ' 秒');
+    }
     if (mode === 'normal' || mode === 'compress') {
       start = time(s.source_start, '片段开始');
       end = time(s.source_end, '片段结束');
@@ -118,7 +122,13 @@ function approve(project, expectedHash) {
   const hash = scriptHash(project.script);
   if (expectedHash !== hash) throw Error('剧本已更新，请重新阅读后确认');
   if (project.review?.issues?.some((i) => i.severity === 'blocking'))
-    throw Error('剧本有待解决的阻断问题');
+    throw Error(
+      '剧本有待解决的阻断问题：\n' +
+        project.review.issues
+          .filter((i) => i.severity === 'blocking')
+          .map((i) => [i.scene, i.message].filter(Boolean).join('：'))
+          .join('\n'),
+    );
   project.approval = {
     scriptHash: hash,
     revision: project.revision,

@@ -12,6 +12,8 @@ module.exports = {
     'src/**/*.mjs',
     'dist/ui/**',
     'build/tutor.png',
+    'build/tutor.svg',
+    'build/fonts/**',
     'package.json',
     'LICENSE',
     'THIRD_PARTY.md',
@@ -22,14 +24,18 @@ module.exports = {
   ],
   asarUnpack: ['**/*.node'],
   extraResources: [
-    {
-      from: 'node_modules/ffmpeg-static',
-      to: 'tools',
-      filter: ['ffmpeg.exe', 'ffmpeg.exe.LICENSE', 'ffmpeg.exe.README'],
-    },
-    { from: 'node_modules/ffprobe-static/bin/win32/x64', to: 'tools', filter: ['ffprobe.exe'] },
+    { from: 'build/generated/tools', to: 'tools' },
     { from: 'build/generated/licenses', to: 'licenses' },
   ],
+  mac: {
+    target: ['dmg', 'zip'],
+    icon: 'build/tutor.icns',
+    category: 'public.app-category.video',
+    identity: '-',
+    hardenedRuntime: false,
+    artifactName: 'Tutor-${version}-macOS-${arch}.${ext}',
+  },
+  dmg: { title: 'Tutor ${version}', sign: false },
   win: {
     target: [
       { target: 'nsis', arch: ['x64'] },

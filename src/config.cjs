@@ -15,13 +15,14 @@ const DEFAULTS = {
       cachedPrice: 0.1,
     },
     editor: {
-      model: 'qwen3.8-max',
+      model: 'deepseek-v4.1-flash',
       protocol: 'openai-chat',
-      baseUrl: HOST + '/compatible-mode/v1',
-      credential: 'default',
-      inputPrice: 12,
-      outputPrice: 36,
-      cachedPrice: 1.5,
+      baseUrl: 'https://aibalance.yaklang.com/v1',
+      credential: 'aibalance',
+      inputPrice: 0,
+      outputPrice: 0,
+      cachedPrice: 0,
+      pricingKnown: false,
     },
     speech: {
       model: 'qwen-audio-3.1-tts-flash',
@@ -53,6 +54,8 @@ const DEFAULTS = {
     lead: 0.25,
     titleLead: 0.6,
     gap: 0.7,
+    brand: { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO' },
+    chapterGap: 12,
   },
   limits: { maxDuration: 600, maxAnalysisBytes: 24 * 1024 * 1024, maxKnowledgeChars: 50000 },
   pricingSource: 'https://help.aliyun.com/zh/model-studio/model-pricing',
@@ -62,6 +65,30 @@ function validateConfig(value) {
     if (!value?.roles?.[name]?.model) throw Error('模型配置不完整：' + name);
   }
   const c = resolveSources(value, true);
+  c.style = {
+    ...c.style,
+    brand: { ...DEFAULTS.style.brand, ...c.style?.brand },
+    chapterGap: c.style?.chapterGap ?? DEFAULTS.style.chapterGap,
+  };
+  if (typeof c.style.brand.enabled !== 'boolean') throw Error('品牌显示设置无效');
+  for (const [key, max] of [
+    ['name', 24],
+    ['tagline', 48],
+  ]) {
+    const text = c.style.brand[key];
+    if (
+      typeof text !== 'string' ||
+      [...text].length > max ||
+      /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(text)
+    )
+      throw Error(
+        '品牌' + (key === 'name' ? '名称' : '副标题') + '必须为单行文字，最多 ' + max + ' 字',
+      );
+    c.style.brand[key] = text.trim();
+  }
+  if (c.style.brand.enabled && !c.style.brand.name) throw Error('请输入品牌名称，或关闭品牌显示');
+  if (!Number.isFinite(c.style.chapterGap) || c.style.chapterGap < 6 || c.style.chapterGap > 24)
+    throw Error('章节分段间距必须为 6 到 24 像素');
   for (const name of ['vision', 'editor', 'speech']) {
     const r = c.roles?.[name];
     if (!r?.model || !r.baseUrl || !r.credential) throw Error('模型配置不完整：' + name);

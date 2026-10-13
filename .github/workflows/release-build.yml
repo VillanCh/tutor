@@ -1,0 +1,62 @@
+name: Native release packages
+on:
+  push:
+    branches: ['codex/release-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows-x64
+          - os: macos-15-intel
+            platform: macOS-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Download compiled UI from release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          gh release download "v$VERSION" --pattern "tutor-ui-v$VERSION.zip" --output tutor-ui.zip
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -NoProfile -Command 'Expand-Archive -Path tutor-ui.zip -DestinationPath dist/ui'
+          else
+            unzip -q tutor-ui.zip -d dist/ui
+          fi
+      - name: Syntax and regression tests
+        run: |
+          npm run check
+          npm test
+      - name: Prepare macOS build tools
+        if: runner.os == 'macOS'
+        run: brew install pkgconf
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+      - name: Build and smoke-test native distribution
+        run: node scripts/release.cjs --prebuilt-ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tutor-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.zip
+            release/*.dmg
+            release/verification-*.json
+            release/SHA256SUMS-*.txt

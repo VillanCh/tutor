@@ -1,26 +1,18 @@
 const fs = require('node:fs/promises'),
   path = require('node:path');
-const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
+const { createCanvas } = require('@napi-rs/canvas');
+const { font, ensureFonts, FONT_FAMILY, BRAND_FAMILY } = require('./fonts.cjs');
+const { brandLayout, paintHeader, chapterSegments, paintTimeline } = require('./branding.cjs');
 const { FFMPEG, run, frame, pcm, wav, probe } = require('./media.cjs');
 const { schedule } = require('./script.cjs');
-const fontFiles = [
-  ['C:/Windows/Fonts/msyh.ttc', 'Tutor Sans'],
-  ['C:/Windows/Fonts/simsun.ttc', 'Tutor Serif'],
-  ['C:/Windows/Fonts/consola.ttf', 'Tutor Mono'],
-];
-for (const [file, name] of fontFiles) {
-  try {
-    GlobalFonts.registerFromPath(file, name);
-  } catch {}
-}
 function drawText(ctx, s, x, y, size, color, family = 'Tutor Sans') {
-  ctx.font = size + 'px "' + family + '", "Noto Sans CJK SC", sans-serif';
+  ctx.font = font(size);
   ctx.fillStyle = color;
   ctx.textBaseline = 'top';
   ctx.fillText(s, x, y);
 }
 function wrap(ctx, s, size, width, family = 'Tutor Sans') {
-  ctx.font = size + 'px "' + family + '", sans-serif';
+  ctx.font = font(size);
   const lines = [];
   let current = '';
   for (const token of s.match(/[A-Za-z0-9./:_+-]+|./gu) || []) {
@@ -56,14 +48,16 @@ function clock(t) {
   );
 }
 async function render({ source, info, script, audio, config, dir, signal, progress }) {
+  ensureFonts();
   const style = config.style,
     FPS = style.fps,
     W = style.width,
     VW = W - 32,
     VH = Math.round(Math.min(1400, (VW * info.height) / info.width) / 2) * 2,
-    H = 52 + VH + 108,
+    CAPTION_H = 72,
+    H = 72 + VH + 128,
     VX = 16,
-    VY = 52,
+    VY = 72,
     Y = VY + VH;
   const BG = style.background,
     INK = style.ink,
@@ -85,12 +79,44 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     video_height: VH,
   };
   plan.source = source;
+  plan.font = { family: FONT_FAMILY, asset: 'NotoSansCJKsc-Regular.otf' };
+  plan.brand = {
+    ...{ enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO' },
+    ...style.brand,
+    font: BRAND_FAMILY,
+    asset: 'SpaceGrotesk-Variable.ttf',
+  };
+  plan.chapterSegments = chapterSegments(
+    plan.chapters_timed,
+    plan.total_duration,
+    VW,
+    style.chapterGap ?? 12,
+  );
+  plan.timeline = {
+    x: VX,
+    y: H - 16,
+    height: 8,
+    gap: style.chapterGap ?? 12,
+    labelBaseline: Y + CAPTION_H + 26,
+  };
+  plan.caption = { y: Y + 2, height: CAPTION_H };
+  const layoutCanvas = createCanvas(W, 72);
+  const header = brandLayout(layoutCanvas.getContext('2d'), style, W, VX);
   plan.models = config.roles;
   plan.speech = config.speech;
   const assets = path.join(dir, 'assets'),
     segments = path.join(dir, 'segments');
   await fs.mkdir(assets, { recursive: true });
   await fs.mkdir(segments, { recursive: true });
+  const progressMask = path.join(assets, 'chapter-progress-mask.png');
+  await png(progressMask, VW, 8, (ctx) => {
+    ctx.fillStyle = '#FFFFFF';
+    for (const segment of plan.chapterSegments) {
+      ctx.beginPath();
+      ctx.roundRect(segment.x, 0, segment.width, 8, Math.min(4, segment.width / 2));
+      ctx.fill();
+    }
+  });
   const output = path.join(dir, 'tutorial.mp4');
   let subtitles = [];
   const fit =
@@ -160,28 +186,14 @@ async function render({ source, info, script, audio, config, dir, signal, progre
         ctx.fillRect(W - 16, VY, 16, VH);
         ctx.fillRect(0, Y, W, H - Y);
         ctx.strokeStyle = LINE;
-        ctx.strokeRect(15, 51, VW + 1, VH + 1);
+        ctx.strokeRect(VX - 1, VY - 1, VW + 1, VH + 1);
       }
-      drawText(ctx, 'YAK', 16, 10, 26, ACC, 'Tutor Mono');
-      drawText(ctx, String(s.chapter + 1).padStart(2, '0') + ' / ' + s.heading, 96, 10, 23, INK);
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, W, VY);
+      paintHeader(ctx, header, s, plan, style, VX);
       ctx.fillStyle = BG;
       ctx.fillRect(0, Y + 2, W, H - Y - 2);
-      for (let ch = 0; ch < plan.chapters_timed.length; ch++) {
-        const c = plan.chapters_timed[ch],
-          x = 16 + (VW * c.start) / plan.total_duration,
-          next = 16 + (VW * c.end) / plan.total_duration;
-        const label = String(ch + 1).padStart(2, '0') + ' / ' + c.title;
-        drawText(
-          ctx,
-          wrap(ctx, label, 18, Math.max(80, next - x - 10))[0] || '',
-          x + 5,
-          H - 40,
-          18,
-          ch === s.chapter ? TERRA : MUTED,
-        );
-      }
-      ctx.fillStyle = LINE;
-      ctx.fillRect(16, H - 12, VW, 6);
+      paintTimeline(ctx, plan.chapterSegments, s, style, VX, H, plan.timeline.labelBaseline);
     });
     s.captions = [];
     let pos = s.voice_lead;
@@ -192,14 +204,16 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       for (let j = 0; j < chunks.length; j++) {
         const span = (s.voice_duration * weights[j]) / sum,
           file = path.join(assets, 'caption-' + i + '-' + j + '.png');
-        await png(file, W, 67, (ctx) => {
+        await png(file, W, CAPTION_H, (ctx) => {
           ctx.fillStyle = BG;
-          ctx.fillRect(0, 0, W, 67);
+          ctx.fillRect(0, 0, W, CAPTION_H);
           wrap(ctx, chunks[j], 27, W - 80)
             .slice(0, 2)
             .forEach((line, k) => {
-              ctx.font = '27px "Tutor Sans"';
-              drawText(ctx, line, (W - ctx.measureText(line).width) / 2, 4 + k * 32, 27, INK);
+              ctx.font = font(27);
+              ctx.textBaseline = 'alphabetic';
+              ctx.fillStyle = INK;
+              ctx.fillText(line, (W - ctx.measureText(line).width) / 2, 31 + k * 32);
             });
         });
         s.captions.push({ file, start: pos, end: pos + span, text: chunks[j] });
@@ -217,10 +231,13 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       }
     }
     const status = path.join(assets, 'status-' + i + '.png');
-    await png(status, 190, 38, (ctx) => {
+    await png(status, header.timeWidth, 18, (ctx) => {
       ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, 190, 38);
-      drawText(ctx, '无声观察', 10, 5, 18, MUTED);
+      ctx.fillRect(0, 0, header.timeWidth, 18);
+      ctx.font = font(11);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = MUTED;
+      ctx.fillText('无声观察', header.timeWidth - ctx.measureText('无声观察').width, 12);
     });
     const args = ['-hide_banner', '-v', 'error', '-y', '-filter_complex_threads', '1'];
     let vf = '';
@@ -331,34 +348,52 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       '][' +
       idx +
       ':v]overlay=' +
-      (W - 400) +
-      ":6:enable='gte(t," +
+      header.timeX +
+      ":45:enable='gte(t," +
       (s.voice_lead + s.voice_duration) +
       ")'[quiet];";
-    const rgb = ACC.match(/\w\w/g).map((x) => parseInt(x, 16));
+    args.push('-loop', '1', '-framerate', String(FPS), '-i', progressMask);
+    const visible = plan.chapterSegments
+      .map(
+        (segment) =>
+          'gte(T+' +
+          s.offset +
+          ',' +
+          segment.start +
+          ')*between(X,' +
+          segment.x +
+          ',' +
+          (segment.x + segment.width) +
+          ')*lt(X,' +
+          segment.x +
+          '+' +
+          segment.width +
+          '*clip((T+' +
+          s.offset +
+          '-' +
+          segment.start +
+          ')/' +
+          (segment.end - segment.start) +
+          ',0,1))',
+      )
+      .join('+');
     vf +=
       'color=c=' +
       ACC +
       ':s=' +
       VW +
-      'x6:r=' +
+      'x8:r=' +
       FPS +
       ':d=' +
       dur +
-      ',format=rgba,geq=r=' +
-      rgb[0] +
-      ':g=' +
-      rgb[1] +
-      ':b=' +
-      rgb[2] +
-      ":a='if(lte(X," +
-      VW +
-      '*(T+' +
-      s.offset +
-      ')/' +
-      plan.total_duration +
-      "),255,0)'[progress];[quiet][progress]overlay=16:" +
-      (H - 12) +
+      ',format=rgb24[progresscolor];[' +
+      (idx + 1) +
+      ":v]format=rgba,alphaextract,geq=lum='lum(X,Y)*clip(" +
+      visible +
+      ",0,1)'[progressalpha];[progresscolor][progressalpha]alphamerge[progress];[quiet][progress]overlay=" +
+      VX +
+      ':' +
+      (H - 16) +
       ':shortest=1[comp];';
     vf +=
       s.transition === 'fade'
@@ -473,19 +508,20 @@ async function render({ source, info, script, audio, config, dir, signal, progre
   const timer = path.join(assets, 'clock');
   await fs.mkdir(timer, { recursive: true });
   for (let t = 0; t <= Math.ceil(plan.total_duration); t++)
-    await png(path.join(timer, String(t).padStart(3, '0') + '.png'), 192, 36, (ctx) => {
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, 192, 36);
-      drawText(
-        ctx,
-        clock(t) + ' / ' + clock(Math.round(plan.total_duration)),
-        4,
-        7,
-        19,
-        MUTED,
-        'Tutor Mono',
-      );
-    });
+    await png(
+      path.join(timer, String(t).padStart(3, '0') + '.png'),
+      header.timeWidth,
+      32,
+      (ctx) => {
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, header.timeWidth, 32);
+        const label = clock(t) + ' / ' + clock(Math.round(plan.total_duration));
+        ctx.font = font(W < 1000 ? 15 : 18);
+        ctx.fillStyle = MUTED;
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, header.timeWidth - ctx.measureText(label).width, 26);
+      },
+    );
   await run(
     FFMPEG,
     [
@@ -504,7 +540,7 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       '-i',
       path.join(dir, 'narration.wav'),
       '-filter_complex',
-      '[0:v]fps=' + FPS + '[x];[x][1:v]overlay=' + (W - 210) + ':6:eof_action=repeat[v]',
+      '[0:v]fps=' + FPS + '[x];[x][1:v]overlay=' + header.timeX + ':13:eof_action=repeat[v]',
       '-map',
       '[v]',
       '-map',

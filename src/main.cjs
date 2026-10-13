@@ -9,6 +9,7 @@ app.commandLine.appendSwitch('force-renderer-accessibility');
 app
   .whenReady()
   .then(async () => {
+    if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '../build/tutor.png'));
     const smokeIndex = process.argv.indexOf('--smoke-test');
     if (smokeIndex !== -1) {
       const reportFile = process.argv[smokeIndex + 1];
@@ -50,7 +51,12 @@ app
     await fs.writeFile(homeFile, JSON.stringify({ dataDir: root }));
     if (process.env.QWEN_API_KEY)
       await studio.store.settings(studio.store.config, { default: process.env.QWEN_API_KEY });
+    if (process.env.AIBALANCE_API_KEY)
+      await studio.store.settings(studio.store.config, {
+        aibalance: process.env.AIBALANCE_API_KEY,
+      });
     delete process.env.QWEN_API_KEY;
+    delete process.env.AIBALANCE_API_KEY;
     Menu.setApplicationMenu(null);
     window = new BrowserWindow({
       show: false,

@@ -85,6 +85,18 @@ module.exports = async function smoke(reportFile, version) {
     );
     for (const asset of assets)
       if (!(await fetch(server.url + asset)).ok) throw Error('Missing UI asset: ' + asset);
+    for (const asset of assets.filter((name) => name.endsWith('.css'))) {
+      const css = await (await fetch(server.url + asset)).text();
+      const fonts = [
+        ...css.matchAll(/url\(["']?(\/assets\/[^)"']+\.(?:otf|ttf|woff2))["']?\)/g),
+      ].map((match) => match[1]);
+      if (!fonts.some((name) => name.endsWith('.otf')))
+        throw Error('Bundled Chinese UI font is missing');
+      if (!fonts.some((name) => name.endsWith('.ttf')))
+        throw Error('Bundled brand UI font is missing');
+      for (const file of fonts)
+        if (!(await fetch(server.url + file)).ok) throw Error('Missing bundled UI font: ' + file);
+    }
     if (typeof require('mammoth').extractRawText !== 'function')
       throw Error('Document import module unavailable');
     const report = {
@@ -96,6 +108,7 @@ module.exports = async function smoke(reportFile, version) {
       modelsCalled: 0,
       checks: {
         nativeCanvas: true,
+        bundledChineseFont: true,
         ffmpeg: true,
         ffprobe: true,
         videoDecode: true,

@@ -13,3 +13,12 @@ coverage/
 *.mp3
 credentials*
 settings.local.json
+# Licensed ReactBits Pro source and Agent Kit stay on the licensed developer's machine.
+src/ui/vendor/
+.agents/
+.claude/
+SKILL.md
+LICENSE.md
+prompts/
+recipes/
+reactbits.local.json

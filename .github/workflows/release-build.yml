@@ -4,7 +4,8 @@ on:
     branches: ['codex/release-*']
   workflow_dispatch:
 permissions:
-  contents: read
+  # GitHub requires repository write access to read unpublished Release drafts.
+  contents: write
 jobs:
   package:
     strategy:

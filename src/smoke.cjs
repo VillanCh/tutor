@@ -76,7 +76,11 @@ module.exports = async function smoke(reportFile, version) {
     });
     if (!result.verification.passed) throw Error('Packaged video verification failed');
     server = await startServer({ dataDir: path.join(dir, 'projects') });
-    const playbackProject = await server.store.create(result.output, '', '成片播放检查');
+    const playbackProject = await server.store.create(
+      process.env.TUTOR_SMOKE_VIDEO || result.output,
+      '',
+      '成片播放检查',
+    );
     const { BrowserWindow } = require('electron');
     playbackWindow = new BrowserWindow({
       show: false,

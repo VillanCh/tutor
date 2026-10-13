@@ -304,7 +304,7 @@ function ScenePreview({ project, scene, onExpand }) {
         ref={videoRef}
         src={endpoint(project, 'source')}
         controls
-        preload="metadata"
+        preload="auto"
         onLoadedMetadata={seek}
         onTimeUpdate={() => {
           const video = videoRef.current;
@@ -556,7 +556,7 @@ function VideoPanel({
           ref={ref}
           src={endpoint(project, output ? 'output' : 'source')}
           controls
-          preload="metadata"
+          preload="auto"
           onLoadedMetadata={() => {
             ref.current.currentTime = output ? outputTime : sourceTime;
           }}

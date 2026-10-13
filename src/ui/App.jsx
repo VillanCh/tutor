@@ -916,7 +916,7 @@ export default function App() {
         <div className="local-state">
           <span className={connection === '本地已连接' ? 'online-dot' : 'offline-dot'} />
           {connection}
-          <span>v0.2</span>
+          <span>v{__TUTOR_VERSION__}</span>
         </div>
       </div>
     </div>

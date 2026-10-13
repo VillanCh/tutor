@@ -6,6 +6,8 @@ node_modules/
 projects/
 outputs/
 dist/
+release/
+build/generated/
 coverage/
 *.log
 *.mp4

@@ -1,8 +1,13 @@
 const fs = require('node:fs/promises'),
   path = require('node:path'),
   { spawn } = require('node:child_process');
-const FFMPEG = require('ffmpeg-static'),
-  FFPROBE = require('ffprobe-static').path;
+const packaged = process.resourcesPath && path.basename(path.dirname(__dirname)) === 'app.asar';
+const FFMPEG = packaged
+    ? path.join(process.resourcesPath, 'tools/ffmpeg.exe')
+    : require('ffmpeg-static'),
+  FFPROBE = packaged
+    ? path.join(process.resourcesPath, 'tools/ffprobe.exe')
+    : require('ffprobe-static').path;
 function run(binary, args, { signal, onProgress, duration } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(Error('任务已取消'));

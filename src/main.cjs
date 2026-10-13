@@ -4,10 +4,24 @@ const fs = require('node:fs/promises'),
   { startServer } = require('./server.cjs');
 let studio, window;
 app.setName('Tutor');
+if (process.platform === 'win32') app.setAppUserModelId('com.yaklang.tutor');
 app.commandLine.appendSwitch('force-renderer-accessibility');
 app
   .whenReady()
   .then(async () => {
+    const smokeIndex = process.argv.indexOf('--smoke-test');
+    if (smokeIndex !== -1) {
+      const reportFile = process.argv[smokeIndex + 1];
+      if (!reportFile) throw Error('Smoke test requires a report path');
+      try {
+        await require('./smoke.cjs')(reportFile, app.getVersion());
+        app.exit(0);
+      } catch (error) {
+        await fs.writeFile(reportFile, JSON.stringify({ passed: false, error: error.message }));
+        app.exit(1);
+      }
+      return;
+    }
     const homeFile = path.join(app.getPath('userData'), 'data-location.json');
     let savedRoot;
     try {
@@ -45,6 +59,7 @@ app
       minWidth: 1080,
       minHeight: 720,
       title: 'Tutor · 教学视频工作台',
+      icon: path.join(__dirname, '../build/tutor.png'),
       backgroundColor: '#14161c',
       titleBarStyle: 'hidden',
       titleBarOverlay: { color: '#14161c', symbolColor: '#e8ebf0', height: 58 },

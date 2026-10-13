@@ -88,6 +88,20 @@ Chat 和语音不是同一个协议：Omni 与 Max 请求 /chat/completions；�
 
 项目保存初稿、Max 修订、视觉校对和人工编辑历史。导入时会复制源视频并记录 SHA256，确认后修改素材或知识将无法直接复用确认。源视频、生成文件、知识及密钥均保存在用户目录，Git 忽略项目数据与媒体。桌面应用会记住上一次的工作目录。
 
+## Windows 发行包
+
+GitHub Releases 提供 Windows 10/11 x64 安装程序与免安装 ZIP。下载发行包不需要 Node.js、FFmpeg 或 ReactBits 授权；首次打开在设置中填写自己的模型 API Key。当前版本未做代码签名。
+
+在有 ReactBits Pro 授权且已安装组件的 Windows x64 开发环境中：
+
+    npm run release:win
+
+生成 release/Tutor-VERSION-windows-x64-setup.exe、portable.zip 和 SHA256SUMS.txt。打包只携带编译后的应用界面、业务代码、运行时依赖和媒体工具；不携带组件 JSX、Agent Kit、密钥、个人设置或素材。FFmpeg/FFprobe 放在 resources/tools，原生 Canvas 模块解包到 app.asar.unpacked。许可证与媒体来源在 resources/licenses。
+
+发行包可独立检查原生模块、真实视频合成与解码、静音间隔、文档模块和界面资源；不调用计费模型：
+
+    Tutor.exe --smoke-test C:/Temp/tutor-release-check.json
+
 ## 验证
 
     npm run check

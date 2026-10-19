@@ -85,7 +85,7 @@ async function licenses() {
       'Exact binary versions and configuration: resources/tools/versions.json.',
       'macOS: FFmpeg 6.1.1 and static x264 (31e19f92f00c7003fa115047ce50978bc98c3a0d), GPL-3.0-or-later, built without nonfree components.',
       'macOS build recipe and flags: resources/tools/build-info.json and scripts/build-mac-media.cjs in the tagged Tutor source.',
-      'Windows: FFmpeg 6.1.1 essentials from gyan.dev and FFprobe 4.0.2 supplied by ffprobe-static; binaries unmodified.',
+      'Windows: FFmpeg 6.1.1 essentials from gyan.dev and FFprobe 4.0.2 supplied by ffprobe-static; executable code unmodified, Authenticode signatures added.',
       'Windows build configuration/external libraries: resources/tools/ffmpeg.exe.README; sources: https://www.gyan.dev/ffmpeg/builds/ and https://github.com/joshwnj/ffprobe-static.',
       'FFmpeg and x264 source archives are supplied with this Tutor GitHub Release.',
       'FFmpeg source: https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz and https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n4.0.2.tar.gz',

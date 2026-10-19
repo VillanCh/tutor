@@ -79,6 +79,13 @@ jobs:
       - name: Install pinned Azure Key Vault signing tool
         if: runner.os == 'Windows'
         run: dotnet tool install --global AzureSignTool --version 7.0.1
+      - name: Use HTTPS for Apple tickets on Intel runners
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        # actions/runner-images#14924: HTTP/3 to CloudKit drops connections.
+        # This rule exists only on the disposable hosted runner; TCP HTTPS stays enabled.
+        run: |
+          echo 'block return out quick proto udp from any to any port 443' | sudo pfctl -f -
+          sudo pfctl -E
       - name: Sign, notarize and verify macOS distribution
         if: runner.os == 'macOS'
         env:

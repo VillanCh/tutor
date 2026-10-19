@@ -8,6 +8,7 @@ module.exports = {
   asar: true,
   npmRebuild: false,
   forceCodeSigning: true,
+  afterSign: './scripts/mac-notarize.cjs',
   files: [
     'src/**/*.cjs',
     'src/**/*.mjs',
@@ -33,7 +34,8 @@ module.exports = {
     icon: 'build/tutor.icns',
     category: 'public.app-category.video',
     hardenedRuntime: true,
-    notarize: true,
+    // The mandatory afterSign hook notarizes and retries ticket stapling before packaging.
+    notarize: false,
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.plist',
     binaries: ['Contents/Resources/tools/ffmpeg', 'Contents/Resources/tools/ffprobe'],

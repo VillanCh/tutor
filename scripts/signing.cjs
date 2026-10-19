@@ -77,10 +77,28 @@ function acceptedNotarization(result) {
   return result.id;
 }
 
-async function notarizeDmg(directory) {
+async function stapleWithRetry(
+  file,
+  run = command,
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await run('xcrun', ['stapler', 'staple', file]);
+      await run('xcrun', ['stapler', 'validate', file]);
+      return;
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      console.log(
+        `Apple ticket stapling attempt ${attempt} failed; retrying in ${attempt * 15}s: ${error.message}`,
+      );
+      await wait(attempt * 15000);
+    }
+  }
+}
+
+async function notarizeFile(file, suffix) {
   validateSigningEnvironment('darwin');
-  const version = require('../package.json').version;
-  const file = path.join(directory, `Tutor-${version}-macOS-${process.arch}.dmg`);
   const authentication = [
     '--apple-id',
     process.env.APPLE_ID,
@@ -89,7 +107,7 @@ async function notarizeDmg(directory) {
     '--team-id',
     process.env.APPLE_TEAM_ID,
   ];
-  console.log('Submitting signed DMG to Apple notarization: ' + path.basename(file));
+  console.log('Submitting signed artifact to Apple notarization: ' + path.basename(file));
   const { stdout } = await command(
     'xcrun',
     [
@@ -107,7 +125,7 @@ async function notarizeDmg(directory) {
   );
   const result = JSON.parse(stdout);
   await fs.writeFile(
-    path.join(directory, `notarization-darwin-${process.arch}.json`),
+    path.resolve('release', `notarization-darwin-${process.arch}-${suffix}.json`),
     JSON.stringify({ file: path.basename(file), id: result.id, status: result.status }, null, 2),
   );
   if (result.status !== 'Accepted' && result.id) {
@@ -115,8 +133,26 @@ async function notarizeDmg(directory) {
     console.error(redact(log.stdout));
   }
   acceptedNotarization(result);
-  await command('xcrun', ['stapler', 'staple', file]);
-  await command('xcrun', ['stapler', 'validate', file]);
+}
+
+async function notarizeApplication(app) {
+  const archive = path.resolve('release', `notary-upload-${process.arch}.zip`);
+  try {
+    await command('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', app, archive], {
+      timeout: 10 * 60000,
+    });
+    await notarizeFile(archive, 'app');
+    await stapleWithRetry(app);
+  } finally {
+    await fs.rm(archive, { force: true });
+  }
+}
+
+async function notarizeDmg(directory) {
+  const version = require('../package.json').version;
+  const file = path.join(directory, `Tutor-${version}-macOS-${process.arch}.dmg`);
+  await notarizeFile(file, 'dmg');
+  await stapleWithRetry(file);
 }
 
 async function verifySignatures({ resources, executable, artifacts }) {
@@ -180,6 +216,8 @@ module.exports = {
   redact,
   parseMacSignature,
   acceptedNotarization,
+  stapleWithRetry,
+  notarizeApplication,
   notarizeDmg,
   verifySignatures,
 };

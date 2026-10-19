@@ -5,6 +5,7 @@ const {
   parseMacSignature,
   acceptedNotarization,
   redact,
+  stapleWithRetry,
 } = require('../scripts/signing.cjs');
 
 test('signed release fails closed on incomplete credentials without printing secret values', () => {
@@ -50,4 +51,31 @@ test('signing diagnostics redact repeated passwords and certificate material', (
     redact('pw=pw certificate', { APPLE_APP_SPECIFIC_PASSWORD: 'pw', CSC_LINK: 'certificate' }),
     '[REDACTED]=[REDACTED] [REDACTED]',
   );
+});
+
+test('temporary Apple ticket failures retry, and persistent failure still blocks publication', async () => {
+  const calls = [];
+  let failures = 2;
+  await stapleWithRetry(
+    'Tutor.app',
+    async (_binary, args) => {
+      calls.push(args[1]);
+      if (failures-- > 0) throw Error('CloudKit network connection lost, error 68');
+    },
+    async () => {},
+  );
+  assert.deepEqual(calls, ['staple', 'staple', 'staple', 'validate']);
+  let attempts = 0;
+  await assert.rejects(
+    stapleWithRetry(
+      'Tutor.app',
+      async () => {
+        attempts++;
+        throw Error('Ticket unavailable');
+      },
+      async () => {},
+    ),
+    /Ticket unavailable/,
+  );
+  assert.equal(attempts, 5);
 });

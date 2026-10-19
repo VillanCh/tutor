@@ -1,5 +1,7 @@
 param([Parameter(Mandatory = $true, Position = 0)][string]$Manifest)
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 $Files = @(Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json)
 if ($Files.Count -lt 2) { throw 'Application and installer paths are required' }
 $records = @()

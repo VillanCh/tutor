@@ -16,8 +16,10 @@ jobs:
             platform: windows-x64
           - os: macos-15-intel
             platform: macOS-x64
+          - os: macos-15
+            platform: macOS-arm64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -52,7 +54,48 @@ jobs:
         run: brew install pkgconf
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
-      - name: Build and smoke-test native distribution
+      - uses: actions/cache/restore@v4
+        if: runner.os == 'macOS'
+        id: media-cache
+        with:
+          path: |
+            build/generated/mac-media
+            build/generated/media-sources
+          key: media-${{ matrix.platform }}-${{ hashFiles('scripts/build-mac-media.cjs') }}
+      - name: Compile redistributable macOS media tools
+        if: runner.os == 'macOS'
+        run: node scripts/build-mac-media.cjs
+      - uses: actions/cache/save@v4
+        if: runner.os == 'macOS' && steps.media-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            build/generated/mac-media
+            build/generated/media-sources
+          key: ${{ steps.media-cache.outputs.cache-primary-key }}
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install pinned Azure Key Vault signing tool
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global AzureSignTool --version 7.0.1
+      - name: Sign, notarize and verify macOS distribution
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ACCOUNT_EMAIL }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node scripts/release.cjs --prebuilt-ui
+      - name: Sign and verify Windows distribution
+        if: runner.os == 'Windows'
+        env:
+          WINDOWS_CODE_SIGN_CERT_NAME: ${{ secrets.WINDOWS_CODE_SIGN_CERT_NAME }}
+          WINDOWS_CODE_SIGN_CLIENT_ID: ${{ secrets.WINDOWS_CODE_SIGN_CLIENT_ID }}
+          WINDOWS_CODE_SIGN_CLIENT_SECRET: ${{ secrets.WINDOWS_CODE_SIGN_CLIENT_SECRET }}
+          WINDOWS_CODE_SIGN_KEY_VAULT_URI: ${{ secrets.WINDOWS_CODE_SIGN_KEY_VAULT_URI }}
+          WINDOWS_CODE_SIGN_TENANT_ID: ${{ secrets.WINDOWS_CODE_SIGN_TENANT_ID }}
         run: node scripts/release.cjs --prebuilt-ui
       - name: Upload verified packages to release draft
         env:
@@ -60,9 +103,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: node scripts/upload-release.cjs
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Tutor-${{ matrix.platform }}
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             release/verification-*.json
             release/SHA256SUMS-*.txt
+            release/notarization-*.json

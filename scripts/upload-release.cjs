@@ -8,8 +8,8 @@ const report = JSON.parse(
     'utf8',
   ),
 );
-if (!report.passed || report.version !== version)
-  throw Error('A passing native verification report is required');
+if (!report.passed || report.version !== version || report.signing?.verified !== true)
+  throw Error('Passing native runtime and signature verification reports are required');
 const files = fs
   .readdirSync('release')
   .filter(

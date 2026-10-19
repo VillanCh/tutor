@@ -93,7 +93,9 @@ Chat 和语音不是同一个协议：Omni 与改稿模型请求 /chat/completio
 
 ## 桌面发行包
 
-GitHub Releases 提供 macOS Apple Silicon / Intel 的 DMG 与 ZIP，以及 Windows 10/11 x64 安装程序与免安装 ZIP。发行包自带媒体工具、中文字体和商标字体，不依赖联网加载字体或系统字体。首次打开在设置中填写自己的模型 API Key。Windows 包未做代码签名；macOS 包采用本地临时签名，未进行 Apple Developer ID 签名及公证。
+GitHub Releases 提供 macOS Apple Silicon / Intel 的 DMG 与 ZIP，以及 Windows 10/11 x64 安装程序与免安装 ZIP。发行包自带媒体工具、中文字体和商标字体，不依赖联网加载字体或系统字体。首次打开在设置中填写自己的模型 API Key。从 v0.3.1 起，发行流程要求 macOS Developer ID 签名、Hardened Runtime 和 Apple 公证，Windows 应用与安装程序要求带时间戳的 Authenticode 签名；签名或原生运行验收失败时禁止上传发行包。历史版本 v0.3.0 未做正式签名。
+
+CI 的 macOS 签名步骤将 `APPLE_CERTIFICATE_BASE64`、`APPLE_CERTIFICATE_PASSWORD` 映射为 electron-builder 的 `CSC_LINK`、`CSC_KEY_PASSWORD`，将 `APPLE_ACCOUNT_EMAIL`、`APPLE_APP_PASSWORD` 映射为 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`，并使用 `APPLE_TEAM_ID`。Windows 通过 Azure Key Vault 和固定版本 AzureSignTool 签名，使用 `WINDOWS_CODE_SIGN_CERT_NAME`、`WINDOWS_CODE_SIGN_CLIENT_ID`、`WINDOWS_CODE_SIGN_CLIENT_SECRET`、`WINDOWS_CODE_SIGN_KEY_VAULT_URI`、`WINDOWS_CODE_SIGN_TENANT_ID`。凭据仅在签名步骤注入；不要提交证书、私钥或密码。本地发行需设置同名环境变量，Windows 还需 .NET 10 与 AzureSignTool 7.0.1。
 
 在有 ReactBits Pro 授权且已安装组件的 Windows x64 开发环境中：
 

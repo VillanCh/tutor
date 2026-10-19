@@ -6,6 +6,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const version = require('../package.json').version;
 const root = path.resolve(__dirname, '..');
+const { validateSigningEnvironment, notarizeDmg, verifySignatures } = require('./signing.cjs');
 async function run(script, args = [], env = {}) {
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(root, script), ...args], {
@@ -167,7 +168,6 @@ async function verify() {
       .update(extractFile(path.join(resources, 'app.asar'), relative.split('/').join(path.sep)))
       .digest('hex');
   }
-  await fs.writeFile(report, JSON.stringify(verification, null, 2));
   const platform = process.platform === 'darwin' ? 'macOS' : 'windows';
   const files = (await fs.readdir(path.join(root, 'release')))
     .filter(
@@ -178,6 +178,19 @@ async function verify() {
     .filter((file) => /\.(exe|zip|dmg)$/.test(file));
   if (files.length !== 2)
     throw Error('Expected two platform distribution artifacts; got ' + files.length);
+  try {
+    verification.signing = await verifySignatures({
+      resources,
+      executable,
+      artifacts: files.map((file) => path.join(root, 'release', file)),
+    });
+  } catch (error) {
+    verification.passed = false;
+    verification.signing = { verified: false, error: error.message };
+    await fs.writeFile(report, JSON.stringify(verification, null, 2));
+    throw error;
+  }
+  await fs.writeFile(report, JSON.stringify(verification, null, 2));
   const sums = [];
   for (const file of files) {
     const hash = crypto.createHash('sha256');
@@ -195,6 +208,7 @@ async function verify() {
 }
 (async () => {
   if (process.argv.includes('--verify-only')) return verify();
+  validateSigningEnvironment(process.platform);
   if (
     !['win32', 'darwin'].includes(process.platform) ||
     (process.platform === 'win32' && process.arch !== 'x64')
@@ -211,18 +225,15 @@ async function verify() {
     await fs.access(path.join(root, 'src/ui/vendor/tutor/ai-chat-2.jsx'));
     await run('node_modules/vite/bin/vite.js', ['build']);
   }
-  await run(
-    'node_modules/electron-builder/cli.js',
-    [
-      '--config',
-      'electron-builder.config.cjs',
-      process.platform === 'darwin' ? '--mac' : '--win',
-      '--' + process.arch,
-      '--publish',
-      'never',
-    ],
-    { CSC_IDENTITY_AUTO_DISCOVERY: 'false' },
-  );
+  await run('node_modules/electron-builder/cli.js', [
+    '--config',
+    'electron-builder.config.cjs',
+    process.platform === 'darwin' ? '--mac' : '--win',
+    '--' + process.arch,
+    '--publish',
+    'never',
+  ]);
+  if (process.platform === 'darwin') await notarizeDmg(path.join(root, 'release'));
   await verify();
 })().catch((error) => {
   console.error(error.stack || error.message);

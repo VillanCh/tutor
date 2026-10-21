@@ -1,5 +1,9 @@
 # Tutor
 
+[官网与免费下载](https://villanch.github.io/tutor/) · [正式发行包](https://github.com/VillanCh/tutor/releases/latest)
+
+Tutor 软件免费。使用 AI 功能，需要先前往 [yakcool.com](https://yakcool.com) 充值并获取自己的 API KEY，再在应用的「模型与制作设置」中配置对应模型源；AI 服务按实际用量计费。
+
 用录屏和知识资料制作教学视频的 Electron 工作台。全部业务代码、图片排版、音频调度与视频流程均为 JavaScript；媒体编解码使用随 npm 安装的 FFmpeg。
 
 默认流程：

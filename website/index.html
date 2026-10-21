@@ -35,7 +35,7 @@
           ></a
         >
         <div class="nav-links" id="nav-links">
-          <a href="#workflow">制作流程</a><a href="#studio">工作台</a
+          <a href="#workflow">制作流程</a><a href="#demo">教程与演示</a><a href="#studio">工作台</a
           ><a href="#getting-started">开始使用</a><a href="#faq">常见问题</a>
         </div>
         <div class="nav-actions">
@@ -96,7 +96,7 @@
                 <path d="M12 3v12m-5-5 5 5 5-5M5 15v5h14v-5" /></svg
               >免费下载 Tutor<span class="button-label">v{{VERSION}}</span></a
             ><a class="button button-light" href="#demo"
-              ><span class="play-circle" aria-hidden="true">▶</span>看看成片效果</a
+              ><span class="play-circle" aria-hidden="true">▶</span>观看教程与演示</a
             >
           </div>
           <p class="hero-fineprint">
@@ -245,31 +245,77 @@
           <div class="demo-heading">
             <div>
               <p class="eyebrow">MADE WITH TUTOR</p>
-              <h2 id="demo-title">成片，比解释更直观。</h2>
+              <h2 id="demo-title">这支教程，<br />就是 Tutor 自动制作的。</h2>
             </div>
-            <p>看看章节、字幕和画面怎样一起工作。<br />这是用 Tutor 渲染器实际生成的演示。</p>
+            <p>从导入录屏、修改剧本，到制作和导出。<br />用 Tutor 制作的教程，带你看懂 Tutor。</p>
           </div>
-          <div class="demo-player">
-            <video
-              controls
-              playsinline
-              preload="none"
-              poster="./assets/demo-poster.webp"
-              aria-label="Tutor 教学视频成片演示：创建一个知识库"
-            >
-              <source src="./assets/tutorial-demo.mp4" type="video/mp4" />
-              <track
-                kind="captions"
-                src="./assets/tutorial-demo.vtt"
-                srclang="zh"
-                label="简体中文"
-              />
-              你的浏览器不支持视频播放，请<a href="./assets/tutorial-demo.mp4">下载演示视频</a>。
-            </video>
-          </div>
-          <div class="demo-footnote">
-            <span><span class="status-dot"></span>实际渲染 · 章节时间轴 · 字幕与配音</span
-            ><span>自制演示素材 / 本机合成示例旁白，非模型音色试听</span>
+          <article class="featured-demo" aria-label="Tutor 自动制作的完整教程">
+            <div class="demo-credit">
+              <span class="demo-made-by"
+                ><span class="status-dot"></span>本视频由 Tutor 自动制作</span
+              >
+              <span>完整教程 · 01:55</span>
+            </div>
+            <div class="demo-player featured-demo-player">
+              <video
+                id="tutor-tutorial"
+                data-generated-by="tutor"
+                controls
+                playsinline
+                preload="none"
+                width="1440"
+                height="1154"
+                poster="./assets/tutor-automated-poster.webp"
+                aria-label="本视频由 Tutor 自动制作：Tutor Studio 自动剪辑流程演示"
+                aria-describedby="tutorial-description"
+              >
+                <source src="./assets/tutor-automated-tutorial.mp4" type="video/mp4" />
+                <track
+                  kind="chapters"
+                  src="./assets/tutor-automated-chapters.vtt"
+                  srclang="zh"
+                  label="教程章节"
+                />
+                你的浏览器不支持视频播放，请<a href="./assets/tutor-automated-tutorial.mp4"
+                  >下载完整教程</a
+                >。
+              </video>
+            </div>
+            <div class="demo-provenance" id="tutorial-description">
+              <h3>Tutor Studio 自动剪辑流程演示</h3>
+              <p>这段视频本身就是 Tutor 的成片：讲解配音、字幕与章节时间轴，直接呈现在你眼前。</p>
+            </div>
+            <ol class="demo-chapters" aria-label="教程内容与章节时间">
+              <li><span>00:00</span>导入素材与生成脚本</li>
+              <li><span>00:38</span>审阅修改与确认制作</li>
+              <li><span>01:29</span>成片预览与导出</li>
+            </ol>
+          </article>
+          <div class="demo-secondary">
+            <div class="demo-secondary-copy">
+              <p class="eyebrow">ANOTHER TUTOR EXAMPLE</p>
+              <h3>再看一个 17 秒的流程小样。</h3>
+              <p>看看知识库的创建过程，怎样被编排成一段带字幕、章节和旁白的教程。</p>
+              <p class="demo-sample-note">自制演示素材 · 本机系统语音旁白，非模型音色试听。</p>
+            </div>
+            <div class="demo-player">
+              <video
+                controls
+                playsinline
+                preload="none"
+                poster="./assets/demo-poster.webp"
+                aria-label="Tutor 流程小样：创建一个知识库，使用本机系统语音旁白"
+              >
+                <source src="./assets/tutorial-demo.mp4" type="video/mp4" />
+                <track
+                  kind="captions"
+                  src="./assets/tutorial-demo.vtt"
+                  srclang="zh"
+                  label="简体中文"
+                />
+                你的浏览器不支持视频播放，请<a href="./assets/tutorial-demo.mp4">下载演示视频</a>。
+              </video>
+            </div>
           </div>
         </div>
       </section>

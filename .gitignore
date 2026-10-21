@@ -12,6 +12,7 @@ coverage/
 *.log
 *.mp4
 !website/assets/tutorial-demo.mp4
+!website/assets/tutor-automated-tutorial.mp4
 *.wav
 *.mp3
 credentials*

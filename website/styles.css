@@ -650,19 +650,88 @@ h1 {
   aspect-ratio: 1440/992;
   background: #f9f6ef;
 }
-.demo-footnote {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  font-size: 9px;
-  line-height: 1.7;
-  color: #787b82;
-  padding-top: 16px;
+.featured-demo-player video {
+  aspect-ratio: 1440 / 1154;
 }
-.demo-footnote > span:first-child {
+.demo-credit {
   display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 17px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.demo-made-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  border: 1px solid #3785ff26;
+  border-radius: 999px;
+  background: #e2ebf9;
+  color: var(--blue-deep);
+  font-size: 12px;
+  font-weight: 600;
+}
+.demo-provenance {
+  margin-top: 25px;
+}
+.demo-provenance h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.demo-provenance p {
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.demo-chapters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+  margin: 25px 0 0;
+  padding: 21px 0 0;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: #596477;
+}
+.demo-chapters li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.demo-chapters li > span {
+  color: var(--blue-deep);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.demo-secondary {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  align-items: center;
+  gap: 48px;
+  margin-top: 54px;
+  padding-top: 42px;
+  border-top: 1px solid var(--line);
+}
+.demo-secondary-copy h3 {
+  margin-top: 14px;
+  font-size: 24px;
+  line-height: 1.6;
+  letter-spacing: -0.7px;
+}
+.demo-secondary-copy > p:not(.eyebrow) {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.demo-secondary-copy > p.demo-sample-note {
+  font-size: 10px;
+  color: #7a8290;
 }
 .studio-layout {
   display: grid;
@@ -1406,15 +1475,46 @@ h1 {
   .demo-player {
     border-radius: 10px;
   }
-  .demo-footnote {
-    display: block;
-    font-size: 8px;
-    line-height: 1.8;
-    padding-top: 13px;
+  .demo-credit {
+    gap: 10px;
+    margin-bottom: 13px;
+    font-size: 9px;
   }
-  .demo-footnote > span:last-child {
+  .demo-made-by {
+    padding: 7px 10px;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .demo-provenance {
+    margin-top: 20px;
+  }
+  .demo-provenance h3 {
+    font-size: 16px;
+  }
+  .demo-provenance p {
+    font-size: 11px;
+  }
+  .demo-chapters {
+    grid-template-columns: 1fr;
+    gap: 11px;
+    margin-top: 20px;
+    padding-top: 17px;
+  }
+  .demo-secondary {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    margin-top: 31px;
+    padding-top: 28px;
+  }
+  .demo-secondary-copy h3 {
+    font-size: 21px;
+  }
+  .demo-secondary-copy > p:not(.eyebrow) {
+    font-size: 11px;
+  }
+  .demo-secondary-copy > p.demo-sample-note {
     display: block;
-    margin-top: 5px;
+    font-size: 9px;
   }
   .studio-layout {
     grid-template-columns: 1fr;

@@ -31,3 +31,12 @@ document.addEventListener('click', (event) => {
   if (!header.contains(event.target)) closeMenu();
 });
 window.matchMedia('(min-width: 761px)').addEventListener('change', closeMenu);
+
+const demoVideos = [...document.querySelectorAll('video')];
+demoVideos.forEach((current) => {
+  current.addEventListener('play', () => {
+    demoVideos.forEach((video) => {
+      if (video !== current) video.pause();
+    });
+  });
+});

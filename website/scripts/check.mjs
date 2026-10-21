@@ -35,6 +35,8 @@ for (const [pattern, label] of [
   [/data-download="mac-intel"/, 'Intel download'],
   [/data-download="windows"/, 'Windows download'],
   [/<track\b[^>]*kind="captions"/, 'Video captions'],
+  [/本视频由 Tutor 自动制作/, 'Tutor-generated tutorial credit'],
+  [/data-generated-by="tutor"/, 'Featured Tutor tutorial'],
 ])
   assert.ok(pattern.test(html), `Missing website requirement: ${label}`);
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
@@ -42,7 +44,7 @@ assert.equal(new Set(ids).size, ids.length, 'Duplicate anchors');
 for (const [, anchor] of html.matchAll(/href="#([^"\s]+)"/g))
   assert.ok(ids.includes(anchor), `Missing anchor #${anchor}`);
 const resources = new Set(
-  [...html.matchAll(/(?:src|href)="(\.\/[^"?#]+)"/g)].map((match) => match[1]),
+  [...html.matchAll(/(?:src|href|poster)="(\.\/[^"?#]+)"/g)].map((match) => match[1]),
 );
 resources.add('./assets/social-card.jpg');
 const css = await get('styles.css');
@@ -64,6 +66,9 @@ for (const resource of resources) {
   } else await access(path.join(root, resource));
 }
 assert.ok([...resources].includes('./assets/tutorial-demo.mp4'));
+assert.ok([...resources].includes('./assets/tutor-automated-tutorial.mp4'));
+assert.ok([...resources].includes('./assets/tutor-automated-poster.webp'));
+assert.ok([...resources].includes('./assets/tutor-automated-chapters.vtt'));
 assert.ok([...resources].includes('./assets/workbench.webp'));
 if (!baseUrl) execFileSync(process.execPath, ['--check', path.join(root, 'app.js')]);
 console.log(

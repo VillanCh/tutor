@@ -12,10 +12,14 @@ class Store {
   constructor(root, credentialIO = null) {
     this.root = path.resolve(root);
     this.credentialIO = credentialIO;
-    this.credentials = { default: process.env.QWEN_API_KEY || '' };
+    this.credentials = {
+      default: process.env.QWEN_API_KEY || '',
+      aibalance: process.env.AIBALANCE_API_KEY || '',
+    };
     this.config = validateConfig(DEFAULTS);
     this.projects = new Map();
     this.draftWrites = new Map();
+    this.writes = new Map();
   }
   async init() {
     await fs.mkdir(this.root, { recursive: true });
@@ -33,6 +37,24 @@ class Store {
         const p = JSON.parse(
           await fs.readFile(path.join(this.root, entry.name, 'project.json'), 'utf8'),
         );
+        const interrupted = p.status === 'working';
+        if (interrupted) {
+          p.error = '上次任务因应用关闭或进程中断而未完成，请检查当前内容后重试。';
+          p.failure = {
+            task: p.job?.label || '未记录',
+            stage: p.progress?.stage || '未记录',
+            startedAt: p.job?.startedAt,
+            at: new Date().toISOString(),
+            details: { code: 'PROCESS_INTERRUPTED' },
+          };
+          p.status = p.script ? 'review' : 'draft';
+          try {
+            require('./script.cjs').requireApproval(p);
+            p.status = 'approved';
+          } catch {}
+          p.progress = { ...p.progress, stage: '任务已中断' };
+          p.stateVersion = (p.stateVersion || 0) + 1;
+        }
         p.job = null;
         if (p.status === 'working') p.status = p.script ? 'review' : 'draft';
         if (!p.sources && !p.sourceHash) {
@@ -55,6 +77,7 @@ class Store {
           p.sources = projectSources(p);
           await this.save(p);
         }
+        if (interrupted) await this.save(p);
         this.projects.set(p.id, p);
       } catch {}
     }
@@ -65,9 +88,26 @@ class Store {
   }
   async save(p) {
     const dir = this.dir(p.id);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, 'project.json.tmp'), JSON.stringify(p, null, 2));
-    await fs.rename(path.join(dir, 'project.json.tmp'), path.join(dir, 'project.json'));
+    const snapshot = JSON.stringify(p, null, 2);
+    const previous = this.writes.get(p.id) || Promise.resolve();
+    const write = previous
+      .catch(() => {})
+      .then(async () => {
+        await fs.mkdir(dir, { recursive: true });
+        const temporary = path.join(dir, 'project-' + crypto.randomUUID() + '.tmp');
+        try {
+          await fs.writeFile(temporary, snapshot);
+          await fs.rename(temporary, path.join(dir, 'project.json'));
+        } finally {
+          await fs.rm(temporary, { force: true });
+        }
+      });
+    this.writes.set(p.id, write);
+    try {
+      await write;
+    } finally {
+      if (this.writes.get(p.id) === write) this.writes.delete(p.id);
+    }
   }
   async create(source, knowledge, title) {
     const inspection = await this.inspectSources(source);
@@ -206,8 +246,15 @@ class Store {
     }
   }
   public(p) {
+    let approvalValid = false;
+    try {
+      require('./script.cjs').requireApproval(p);
+      approvalValid = true;
+    } catch {}
     return {
       ...p,
+      stateVersion: p.stateVersion || 0,
+      approvalValid,
       scriptHash: p.script ? require('./script.cjs').scriptHash(p.script) : null,
       totals: totals(p.usage),
     };

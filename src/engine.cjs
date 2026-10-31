@@ -8,6 +8,8 @@ const { Provider } = require('./provider.cjs'),
   prompts = require('./prompts.cjs'),
   { render } = require('./render.cjs');
 const { projectSources, sourceManifest } = require('./sources.cjs');
+const { parseReferences, saveReferences } = require('./references.cjs');
+const { advancePercent } = require('./progress.mjs');
 class Engine extends EventEmitter {
   constructor(store) {
     super();
@@ -15,7 +17,9 @@ class Engine extends EventEmitter {
     this.controllers = new Map();
   }
   publish(p, patch = {}) {
-    Object.assign(p.progress, patch);
+    const percent = advancePercent(patch.percent, p.progress?.percent);
+    p.progress = { ...p.progress, ...patch, percent };
+    p.stateVersion = (p.stateVersion || 0) + 1;
     this.emit('project', this.store.public(p));
   }
   async record(p, r) {
@@ -35,21 +39,33 @@ class Engine extends EventEmitter {
     const p = this.store.get(id);
     if (p.job) throw Error('该项目已有任务在运行');
     const controller = new AbortController(),
-      config = structuredClone(this.store.config);
-    p.job = { label, startedAt: new Date().toISOString() };
+      config = structuredClone(this.store.config),
+      startedAt = new Date().toISOString();
+    const taskId = crypto.randomUUID();
+    p.job = { id: taskId, label, startedAt };
     p.status = 'working';
     p.error = null;
     p.failedTask = null;
-    p.progress = { stage: label, percent: 0, streamText: '', streamEstimate: 0 };
+    p.failure = null;
+    p.progress = { taskId, stage: label, percent: 0, streamText: '', streamEstimate: 0 };
+    if (label === '生成并校对剧本' || label === '按要求修改剧本') p.approval = null;
     this.controllers.set(id, controller);
-    await this.store.save(p);
     this.publish(p);
     try {
+      await this.store.save(p);
       await fn(p, config, controller.signal);
       p.job = null;
-      await this.store.save(p);
       this.publish(p);
+      await this.store.save(p);
     } catch (error) {
+      p.failure = {
+        task: label,
+        stage: p.progress.stage,
+        startedAt,
+        at: new Date().toISOString(),
+        cancelled: controller.signal.aborted,
+        details: error.details ? JSON.parse(this.redact(JSON.stringify(error.details))) : null,
+      };
       p.job = null;
       p.error = this.redact(error.message);
       p.failedTask = {
@@ -62,9 +78,15 @@ class Engine extends EventEmitter {
         cancelled: controller.signal.aborted,
       };
       p.status = p.script ? 'review' : 'draft';
+      if (label === '生成旁白与视频') {
+        try {
+          requireApproval(p);
+          p.status = 'approved';
+        } catch {}
+      }
       p.progress.stage = controller.signal.aborted ? '已取消' : '任务失败';
-      await this.store.save(p);
       this.publish(p);
+      await this.store.save(p);
       throw Error(p.error);
     } finally {
       this.controllers.delete(id);
@@ -112,9 +134,10 @@ class Engine extends EventEmitter {
     await fs.writeFile(path.join(this.store.dir(p.id), file), JSON.stringify(value, null, 2));
     p.history.push({ stage, file, at: new Date().toISOString(), script: value.script || value });
   }
-  async audit(p, provider, script, signal) {
+  async audit(p, provider, script, signal, images = []) {
     const sources = projectSources(p);
     const issues = [],
+      corrections = [],
       summaries = [];
     let corrected = script;
     for (const [index, source] of sources.entries()) {
@@ -147,6 +170,8 @@ class Engine extends EventEmitter {
                   sources.length > 1,
                 ),
               },
+              ...images.map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl } })),
+              ...(images.length ? [{ type: 'text', text: '附图是用户的修改参考。原片操作与时间范围仍以录像为准，不要根据附图虚构原片中没有发生的操作。' }] : []),
             ],
           },
         ],
@@ -180,9 +205,12 @@ class Engine extends EventEmitter {
           : []),
       );
       summaries.push(source.name + '：' + String(result.value.summary || '完成视觉校对'));
+      if (Array.isArray(result.value.corrections))
+        corrections.push(...result.value.corrections.map((item) => ({ ...item, source_id: source.id })));
     }
     p.review = {
       issues,
+      corrections,
       summary: summaries.join('\n'),
       at: new Date().toISOString(),
     };
@@ -229,13 +257,13 @@ class Engine extends EventEmitter {
       await this.keepVersion(p, 'initial', initial);
       this.publish(p, {
         percent: 43,
-        stage: sources.length > 1 ? 'Max 联合编排多视频剪辑脚本' : 'Max 修订表达与知识问题',
+        stage: sources.length > 1 ? '改稿模型联合编排多视频剪辑脚本' : '改稿模型修订表达与知识问题',
         streamText: '',
         streamEstimate: 0,
       });
       const edited = await provider.json(
         'editor',
-        'Max 剧本修订',
+        '剧本修订',
         [
           {
             role: 'user',
@@ -256,7 +284,7 @@ class Engine extends EventEmitter {
       p.title = final.title;
       p.chat.push({
         role: 'assistant',
-        text: '初稿、Max 修订和 Omni 视频校对已完成。请检查右侧剧本，确认后再生成视频。',
+        text: '初稿、改稿模型修订和 Omni 视频校对已完成。请检查右侧剧本，确认后再生成视频。',
         at: new Date().toISOString(),
       });
       await fs.writeFile(
@@ -266,16 +294,54 @@ class Engine extends EventEmitter {
       this.publish(p, { percent: 100, stage: '等待人工确认', streamText: '', streamEstimate: 0 });
     });
   }
-  async edit(id, request) {
+  async edit(id, request, input = []) {
     const p = this.store.get(id);
     if (!p.script) throw Error('请先生成剧本');
+    const images = parseReferences(input);
+    request = String(request || '').trim();
+    if (!request && !images.length) throw Error('请输入修改要求或添加参考图片');
+    request ||= '请参考附图检查并修改当前剧本，保持实际操作与时间范围准确。';
     return this.task(id, '按要求修改剧本', async (p, config, signal) => {
       p.approval = null;
-      p.chat.push({ role: 'user', text: request, at: new Date().toISOString() });
+      const attachments = await saveReferences(this.store.dir(p.id), images);
+      p.chat.push({ role: 'user', text: request, attachments, at: new Date().toISOString() });
       const provider = this.provider(p, config);
+      let instruction = request;
+      if (images.length) {
+        this.publish(p, {
+          percent: 12,
+          stage: 'Omni 理解修改参考图',
+          streamText: '',
+          streamEstimate: 0,
+        });
+        const reference = await provider.json(
+          'vision',
+          '参考图片理解',
+          [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    '用户修改要求：' +
+                    request +
+                    '\n请理解附图中的修改参考，以 JSON 返回 summary（图片内容摘要）和 changes（与修改要求相关的建议数组）。不要虚构视频中没有发生的操作。',
+                },
+                ...images.map((image) => ({
+                  type: 'image_url',
+                  image_url: { url: image.dataUrl },
+                })),
+              ],
+            },
+          ],
+          signal,
+        );
+        instruction += '\nOmni 对参考图片的理解：\n' + JSON.stringify(reference.value);
+      }
       this.publish(p, {
         percent: 20,
-        stage: 'Max 按你的要求改写',
+        stage: '改稿模型按你的要求改写',
         streamText: '',
         streamEstimate: 0,
       });
@@ -285,14 +351,14 @@ class Engine extends EventEmitter {
         [
           {
             role: 'user',
-            content: prompts.editPrompt(p.script, p.knowledge, request, sourceManifest(p)),
+            content: prompts.editPrompt(p.script, p.knowledge, instruction, sourceManifest(p)),
           },
         ],
         signal,
       );
       const revised = normalizeScript(edited.value, projectSources(p));
       await this.keepVersion(p, 'max-edit', revised);
-      const final = await this.audit(p, provider, revised, signal);
+      const final = await this.audit(p, provider, revised, signal, images);
       revise(p, final);
       p.title = final.title;
       p.chat.push({
@@ -359,7 +425,7 @@ class Engine extends EventEmitter {
       normalizeScript(p.script, sources);
       for (const source of sources)
         if (source.hash && (await require('./store.cjs').hashFile(source.path)) !== source.hash)
-          throw Error('原始素材已变更，请重新导入和确认：' + source.name);
+          { p.approval = null; throw Error('原始素材已变更，请重新导入和确认：' + source.name); }
       const dir = path.join(this.store.dir(id), 'output-r' + p.revision);
       await fs.mkdir(dir, { recursive: true });
       const voices = path.join(this.store.dir(id), 'voices');

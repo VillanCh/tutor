@@ -1,0 +1,9 @@
+Noto Sans CJK SC Regular, original unmodified font.
+Source: https://github.com/notofonts/noto-cjk/blob/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf
+License: SIL Open Font License 1.1, retained in LICENSE.txt.
+SHA256: 2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b
+
+Space Grotesk, original unmodified variable font.
+Source: https://github.com/google/fonts/blob/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf
+License: SIL Open Font License 1.1, retained in SpaceGrotesk-LICENSE.txt.
+SHA256: acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72

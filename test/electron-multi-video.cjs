@@ -284,7 +284,8 @@ app.whenReady().then(async () => {
     let project = [...studio.store.projects.values()][0];
     assert.equal(project.script, null);
     await ui("!!document.querySelector('[role=dialog]')", 'model setup after local import');
-    studio.store.credentials.default = 'test-placeholder';
+    for (const role of Object.values(studio.store.config.roles))
+      studio.store.credentials[role.credential] = 'test-placeholder';
     await window.webContents.reload();
     await ui(
       "document.querySelector('.next-action button')?.textContent.includes('生成剧本')",
@@ -378,7 +379,8 @@ app.whenReady().then(async () => {
     await Promise.all(studio.store.draftWrites.values());
     studio.close();
     studio = await startServer({ dataDir: path.join(temp, 'projects') });
-    studio.store.credentials.default = 'test-placeholder';
+    for (const role of Object.values(studio.store.config.roles))
+      studio.store.credentials[role.credential] = 'test-placeholder';
     studio.engine.provider = stubProvider;
     await window.loadURL(studio.url + '/');
     project = studio.store.get(oldId);

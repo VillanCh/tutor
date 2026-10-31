@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { parseJson } = require('./script.cjs');
 const { requestEndpoint } = require('./model-sources.mjs');
+const { safeEndpoint } = require('./diagnostics.mjs');
 function usageRecord(role, stage, raw, sent, received, latency, error = null) {
   const u = raw || {},
     input = u.prompt_tokens ?? u.input_tokens ?? 0,
@@ -26,12 +27,13 @@ function usageRecord(role, stage, raw, sent, received, latency, error = null) {
     sent_bytes: sent,
     received_bytes: received,
     latency_ms: latency,
-    estimated_cny: hasTokens
-      ? ((input - cached) * role.inputPrice +
-          cached * role.cachedPrice +
-          output * role.outputPrice) /
-        1e6
-      : null,
+    estimated_cny:
+      hasTokens && role.pricingKnown !== false
+        ? ((input - cached) * role.inputPrice +
+            cached * role.cachedPrice +
+            output * role.outputPrice) /
+          1e6
+        : null,
     error,
   };
 }
@@ -50,6 +52,12 @@ class Provider {
     let bytes = 0,
       reported = null;
     const url = requestEndpoint(role);
+    const details = {
+      endpoint: safeEndpoint(url),
+      model: role.model,
+      source: this.config.sources?.find((s) => s.id === role.sourceId)?.name,
+      stage,
+    };
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -57,10 +65,22 @@ class Provider {
         body,
         signal,
       });
+      details.httpStatus = response.status;
+      details.requestId =
+        response.headers.get('x-request-id') || response.headers.get('request-id');
       if (!response.ok) {
         const message = await response.text();
         bytes = Buffer.byteLength(message);
-        throw Error('模型请求 ' + response.status + '：' + message.slice(0, 1000));
+        details.httpStatus = response.status;
+        details.requestId =
+          response.headers.get('x-request-id') || response.headers.get('request-id');
+        try {
+          const body = JSON.parse(message);
+          details.code = body.error?.code || body.code;
+          details.requestId =
+            body.request_id || body.error?.request_id || body.error?.id || details.requestId;
+        } catch {}
+        throw Error('模型请求 ' + response.status + '：' + message.slice(0, 8000));
       }
       if (stream) {
         let text = '',
@@ -76,7 +96,11 @@ class Provider {
             const value = line.slice(5).trim();
             if (!value || value === '[DONE]') continue;
             const packet = JSON.parse(value);
-            if (packet.error) throw Error(packet.error.message || JSON.stringify(packet.error));
+            if (packet.error) {
+              details.code = packet.error.code;
+              details.requestId = packet.request_id || packet.error.id || details.requestId;
+              throw Error('模型流返回错误：' + JSON.stringify(packet).slice(0, 8000));
+            }
             if (packet.usage) reported = packet.usage;
             const part = packet.choices?.[0]?.delta?.content || '';
             text += part;
@@ -96,6 +120,12 @@ class Provider {
       const data = Buffer.from(await response.arrayBuffer());
       bytes = data.length;
       if (role.protocol === 'openai-speech') {
+        if (/json/i.test(response.headers.get('content-type') || '')) {
+          const result = JSON.parse(data.toString());
+          details.code = result.error?.code || result.code;
+          details.requestId = result.request_id || details.requestId;
+          throw Error('配音接口返回了 JSON，未返回音频：' + data.toString().slice(0, 8000));
+        }
         await this.record(
           usageRecord(role, stage, null, Buffer.byteLength(body), bytes, Date.now() - start),
         );
@@ -109,10 +139,22 @@ class Provider {
       return result;
     } catch (error) {
       let message = String(error.message);
+      if (error.cause) {
+        details.code = error.cause.code;
+        message += '\n' + [error.cause.code, error.cause.message].filter(Boolean).join('：');
+      }
       for (const value of Object.values(this.credentials))
         if (value) message = message.replaceAll(value, '[REDACTED]');
-      await this.record(
-        usageRecord(
+      const safeDetails = JSON.parse(
+        JSON.stringify(details, (_, value) => {
+          if (typeof value !== 'string') return value;
+          for (const key of Object.values(this.credentials))
+            if (key) value = value.replaceAll(key, '[REDACTED]');
+          return value;
+        }),
+      );
+      await this.record({
+        ...usageRecord(
           role,
           stage,
           reported,
@@ -121,8 +163,9 @@ class Provider {
           Date.now() - start,
           message,
         ),
-      );
-      throw Error(message);
+        error_details: safeDetails,
+      });
+      throw Object.assign(Error(message), { details: safeDetails });
     }
   }
   async json(name, stage, messages, signal) {
@@ -172,11 +215,8 @@ class Provider {
     if (audio.data) return Buffer.from(audio.data, 'base64');
     const url = new URL(audio.url);
     if (!['https:', 'http:'].includes(url.protocol)) throw Error('音频下载地址无效');
-    const start = Date.now(),
-      response = await fetch(url, { signal });
-    if (!response.ok) throw Error('音频下载失败：' + response.status);
-    const data = Buffer.from(await response.arrayBuffer());
-    await this.record({
+    const start = Date.now();
+    const record = {
       id: crypto.randomUUID(),
       stage: stage + ' 下载',
       model: role.model,
@@ -186,12 +226,41 @@ class Provider {
       total_tokens: 0,
       usage_reported: true,
       sent_bytes: 0,
-      received_bytes: data.length,
-      latency_ms: Date.now() - start,
+      received_bytes: 0,
       estimated_cny: 0,
       type: 'download',
-    });
-    return data;
+    };
+    const details = {
+      endpoint: safeEndpoint(url.href),
+      model: role.model,
+      stage: stage + ' 下载',
+      source: this.config.sources?.find((s) => s.id === role.sourceId)?.name,
+      requestId: result.request_id,
+    };
+    try {
+      const response = await fetch(url, { signal });
+      details.httpStatus = response.status;
+      if (!response.ok) throw Error('音频下载失败：HTTP ' + response.status);
+      const data = Buffer.from(await response.arrayBuffer());
+      await this.record({ ...record, received_bytes: data.length, latency_ms: Date.now() - start });
+      return data;
+    } catch (error) {
+      details.code = error.cause?.code || error.code;
+      let message =
+        error.message +
+        (error.cause
+          ? '\n' + [error.cause.code, error.cause.message].filter(Boolean).join('：')
+          : '');
+      for (const key of Object.values(this.credentials))
+        if (key) message = message.replaceAll(key, '[REDACTED]');
+      await this.record({
+        ...record,
+        latency_ms: Date.now() - start,
+        error: message,
+        error_details: details,
+      });
+      throw Object.assign(Error(message), { details });
+    }
   }
 }
 module.exports = { Provider, usageRecord };

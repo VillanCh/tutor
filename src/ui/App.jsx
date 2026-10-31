@@ -59,6 +59,16 @@ import Usage from './vendor/tutor/ai-usage-1';
 import SettingsPanel from './SettingsPanel';
 import StreamOutput from './StreamOutput';
 import { readLocal, writeLocal, loadProjectDraft } from './drafts.mjs';
+import FailurePanel, { RequestFailures } from './FailurePanel';
+import { projectFailure } from '../diagnostics.mjs';
+import { safePercent } from '../progress.mjs';
+import {
+  IMAGE_TYPES,
+  REFERENCE_LIMITS,
+  VIDEO_EXTENSIONS,
+  VIDEO_UPLOAD_BYTES,
+} from '../file-policy.mjs';
+import ReferenceImages from './ReferenceImages';
 import {
   activitySteps,
   api,
@@ -71,11 +81,13 @@ import {
   money,
   parseVideoPaths,
   parseScriptJson,
+  mergeProjects,
   phase,
   projectSources,
   sceneSource,
   sourceEndpoint,
   status,
+  uploadVideo,
   voiceName,
 } from './workbench';
 
@@ -137,6 +149,10 @@ function ImportPanel({
   pending,
   hasKey,
   openSettings,
+  acceptVideoFiles,
+  sourceName,
+  setSourceName,
+  uploadingVideo,
   maxDuration = 600,
   inspection,
 }) {
@@ -151,6 +167,7 @@ function ImportPanel({
     [next[index], next[index + offset]] = [next[index + offset], next[index]];
     setSource(next.join('\n'));
   };
+  const depth = useRef(0);
   return (
     <div
       className="import-panel"
@@ -185,7 +202,35 @@ function ImportPanel({
           'video-dropzone ' + (files.length ? 'has-source ' : '') + (dragging ? 'is-dragging' : '')
         }
         onClick={chooseVideo}
-        disabled={pending}
+        disabled={pending || uploadingVideo}
+        onDragEnter={(event) => {
+          if (event.dataTransfer.types.includes('Files')) {
+            event.preventDefault();
+            event.stopPropagation();
+            depth.current++;
+            setDragging(true);
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = pending || uploadingVideo ? 'none' : 'copy';
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (--depth.current <= 0) {
+            depth.current = 0;
+            setDragging(false);
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          depth.current = 0;
+          setDragging(false);
+          if (!pending && !uploadingVideo) acceptVideoFiles([...event.dataTransfer.files]);
+        }}
       >
         <span className="drop-icon">
           {files.length ? <Video size={27} /> : <Upload size={27} />}
@@ -339,7 +384,7 @@ function ImportPanel({
       <Button
         className="start-button"
         onClick={create}
-        disabled={!files.length || pending || inspecting || invalid}
+        disabled={!files.length || pending || uploadingVideo || inspecting || invalid}
       >
         {pending ? <LoaderCircle className="animate-spin" /> : <WandSparkles />}{' '}
         {pending ? '正在导入素材…' : hasKey ? '生成剪辑脚本' : '先导入素材'} <ArrowRight />
@@ -378,7 +423,7 @@ function ScenePreview({ project, scene, onExpand }) {
         key={source.id}
         src={sourceEndpoint(project, scene)}
         controls
-        preload="metadata"
+        preload="auto"
         onLoadedMetadata={seek}
         onTimeUpdate={() => {
           const video = videoRef.current;
@@ -730,7 +775,7 @@ function VideoPanel({
             output ? endpoint(project, 'output') : sourceEndpoint(project, { source_id: source.id })
           }
           controls
-          preload="metadata"
+          preload="auto"
           onLoadedMetadata={() => {
             ref.current.currentTime = output
               ? outputTime
@@ -863,6 +908,18 @@ export default function App() {
   const [knowledge, setKnowledge] = useState(() => readLocal('tutor-import')?.knowledge || '');
   const [inspection, setInspection] = useState(null);
   const [importDraftReady, setImportDraftReady] = useState(false);
+  const [sourceName, setSourceName] = useState('');
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const videoInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const [referenceImages, setReferenceImages] = useState([]);
+  const referenceImagesRef = useRef([]);
+  const [readingImages, setReadingImages] = useState(false);
+  const imageReadingRef = useRef(false);
+  const attachmentEpoch = useRef(0);
+  const [imageDragging, setImageDragging] = useState(false);
+  const imageDragDepth = useRef(0);
+  const [referencePreview, setReferencePreview] = useState(null);
   const [knowledgeDraft, setKnowledgeDraft] = useState('');
   const [scriptDraft, setScriptDraft] = useState(null);
   const [json, setJson] = useState('');
@@ -879,10 +936,20 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0);
   const [connection, setConnection] = useState('连接中');
   const [loadError, setLoadError] = useState('');
+  const [requestError, setRequestError] = useState(null);
   const [mobilePane, setMobilePane] = useState('preview');
   const project = projects.find((p) => p.id === activeId) || null;
   const totals = project?.totals || EMPTY_TOTALS;
   const busy = Boolean(project?.job);
+  const failure = projectFailure(project);
+  const taskError =
+    requestError &&
+    project &&
+    requestError.projectId === project.id &&
+    !(project.stateVersion > requestError.stateVersion && (project.job || project.failure))
+      ? requestError
+      : null;
+  const canRender = !!project?.approvalValid;
   const dirty =
     !!project?.script &&
     !!scriptDraft &&
@@ -895,12 +962,13 @@ export default function App() {
       (role) => settings.credentialStatus[settings.config.roles[role].credential],
     );
   const voice = voiceName(settings?.config.speech.voice);
-  const updateProject = (p) => setProjects((all) => [p, ...all.filter((item) => item.id !== p.id)]);
+  const updateProject = (p) => setProjects((all) => mergeProjects(all, [p]));
   const perform = async (fn) => {
     setPending(true);
     try {
       return await fn();
     } catch (error) {
+      if (error.project) updateProject(error.project);
       toast.error(error.message);
       return null;
     } finally {
@@ -926,8 +994,9 @@ export default function App() {
       .then(([all, value]) => {
         if (!alive) return;
         all.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-        setProjects(all);
+        setProjects((current) => mergeProjects(current, all));
         setSettings(value);
+        setLoadError('');
         const remembered = localStorage.getItem('tutor-project');
         setActiveId(
           remembered === 'new'
@@ -939,7 +1008,19 @@ export default function App() {
       })
       .catch((error) => setLoadError(error.message));
     const events = new EventSource('/api/events');
-    events.onopen = () => setConnection('本地已连接');
+    events.onopen = () => {
+      setConnection('本地已连接');
+      api('/api/projects')
+        .then((all) => {
+          if (alive) {
+            setProjects((current) => mergeProjects(current, all));
+            setLoadError('');
+          }
+        })
+        .catch((error) => {
+          if (alive) setLoadError(error.message);
+        });
+    };
     events.onerror = () => setConnection('正在重连');
     events.onmessage = (event) => {
       try {
@@ -1065,6 +1146,26 @@ export default function App() {
     if (draftOwner.ready) api('/api/drafts/' + project.id, { draft }).catch(() => {});
   }, [project?.id, project?.scriptHash, draftOwner, scriptDraft, json, dirty, jsonDirty]);
   useEffect(() => {
+    setRequestError(null);
+  }, [project?.id]);
+  useEffect(() => {
+    attachmentEpoch.current++;
+    referenceImagesRef.current = [];
+    setReferenceImages([]);
+    setImageDragging(false);
+  }, [project?.id]);
+  useEffect(() => {
+    const preventFileNavigation = (event) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+    };
+    window.addEventListener('dragover', preventFileNavigation);
+    window.addEventListener('drop', preventFileNavigation);
+    return () => {
+      window.removeEventListener('dragover', preventFileNavigation);
+      window.removeEventListener('drop', preventFileNavigation);
+    };
+  }, []);
+  useEffect(() => {
     if (!project?.job) {
       setElapsed(0);
       return;
@@ -1076,6 +1177,14 @@ export default function App() {
   useEffect(() => {
     if (project?.status === 'done') setOutput(true);
   }, [project?.status]);
+  useEffect(() => {
+    if (project?.error) {
+      setMobilePane('preview');
+      setApproveOpen(false);
+      setView('activity');
+      requestAnimationFrame(() => document.querySelector('.preview-content')?.scrollTo({ top: 0 }));
+    }
+  }, [project?.id, project?.error, project?.failure?.at]);
   useEffect(() => {
     const keydown = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -1131,13 +1240,96 @@ export default function App() {
   const chooseVideo = () =>
     perform(async () => {
       if (!window.tutorDesktop) {
-        document.querySelector('textarea[aria-label="视频文件路径，每行一个"]')?.focus();
-        toast('浏览器模式可粘贴本地视频路径；桌面应用支持选择文件。');
+        videoInputRef.current?.click();
         return;
       }
       const files = await window.tutorDesktop.pickVideo();
       if (files) addVideos(Array.isArray(files) ? files : [files]);
     });
+  const acceptVideoFiles = async (files) => {
+    if (!files.length || uploadingVideo) return;
+    setUploadingVideo(true);
+    try {
+      const paths = [];
+      for (const file of files) {
+        if (!VIDEO_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) continue;
+        const local = window.tutorDesktop?.getPathForFile(file);
+        if (!local && file.size > VIDEO_UPLOAD_BYTES)
+          throw new Error('浏览器上传的视频不能超过 1 GB');
+        paths.push(local || (await uploadVideo(file)));
+      }
+      if (paths.length !== files.length) toast('已忽略 ' + (files.length - paths.length) + ' 个非视频文件');
+      addVideos(paths);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+  const setImages = (images) => {
+    referenceImagesRef.current = images;
+    setReferenceImages(images);
+  };
+  const addReferenceImages = async (files) => {
+    if (!project?.script || busy || pending) {
+      toast('请先生成剧本，并等待当前任务结束后再添加参考图。');
+      return;
+    }
+    if (imageReadingRef.current) {
+      toast('正在读取图片，请稍后再添加。');
+      return;
+    }
+    if (!files.length) return;
+    const epoch = attachmentEpoch.current;
+    imageReadingRef.current = true;
+    setReadingImages(true);
+    try {
+      if (referenceImagesRef.current.length + files.length > REFERENCE_LIMITS.count)
+        throw new Error('最多添加 4 张参考图片');
+      const images = [];
+      for (const file of files) {
+        if (!IMAGE_TYPES.includes(file.type)) throw new Error('参考图片仅支持 PNG、JPEG 和 WebP');
+        if (file.size > REFERENCE_LIMITS.fileBytes) throw new Error('每张参考图片不能超过 5 MB');
+        const bitmap = await createImageBitmap(file);
+        const pixels = bitmap.width * bitmap.height;
+        bitmap.close();
+        if (pixels > 40000000) throw new Error('参考图片尺寸过大，请缩小后重试');
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('图片读取失败'));
+          reader.readAsDataURL(file);
+        });
+        images.push({
+          id: crypto.randomUUID(),
+          name: file.name || '粘贴截图.png',
+          size: file.size,
+          dataUrl,
+        });
+      }
+      if (epoch !== attachmentEpoch.current) return;
+      const combined = [...referenceImagesRef.current, ...images];
+      if (combined.reduce((sum, image) => sum + image.size, 0) > REFERENCE_LIMITS.totalBytes)
+        throw new Error('参考图片总大小不能超过 12 MB');
+      setImages(combined);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      imageReadingRef.current = false;
+      setReadingImages(false);
+    }
+  };
+  const pasteReferences = (event) => {
+    const files = [...(event.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (files.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      addReferenceImages(files);
+    }
+  };
   const chooseKnowledge = () =>
     perform(async () => {
       if (!window.tutorDesktop) {
@@ -1164,7 +1356,7 @@ export default function App() {
         return;
       }
       setView('activity');
-      await api(endpoint(p, 'prepare'), {});
+      await startTask('prepare', {}, p);
     });
   const persistScript = async () => {
     const input = jsonDirty ? parseScriptJson(json) : scriptDraft;
@@ -1202,21 +1394,57 @@ export default function App() {
       if (dirty || jsonDirty) {
         await persistScript();
       }
-      await api(endpoint(project, 'edit'), { message });
+      const result = await startTask('edit', {
+        message,
+        images: referenceImages.map(({ name, dataUrl }) => ({ name, dataUrl })),
+      });
+      setImages([]);
+      return result;
     });
   const offerEdit = (text) => {
     setDraftOffer({ text, id: Date.now() });
     setMobilePane('chat');
   };
   const cancel = () => perform(() => api(endpoint(project, 'cancel'), {}));
+  const startTask = async (action, data = {}, target = project) => {
+    setRequestError(null);
+    setView('activity');
+    setMobilePane('preview');
+    if (action === 'render') setApproveOpen(false);
+    try {
+      const result = await api(
+        endpoint(target, action),
+        action === 'render' ? { ...data, hash: target.scriptHash } : data,
+      );
+      if (result.project) updateProject(result.project);
+      return result;
+    } catch (error) {
+      if (error.project) updateProject(error.project);
+      setRequestError({
+        projectId: target.id,
+        stateVersion: (error.project || target).stateVersion || 0,
+        title: '任务未能启动',
+        message: error.message,
+        stage: { render: '提交制作请求', edit: '提交改稿请求', prepare: '提交剧本生成请求' }[
+          action
+        ],
+        at: new Date().toISOString(),
+        httpStatus: error.httpStatus,
+      });
+      setApproveOpen(false);
+      requestAnimationFrame(() => document.querySelector('.preview-content')?.scrollTo({ top: 0 }));
+      throw error;
+    }
+  };
+  const retryRender = () => perform(() => startTask('render'));
   const prepare = () =>
     perform(async () => {
       if (!hasKey) {
         openSettings();
         return;
       }
-      await api(endpoint(project, 'prepare'), {});
       setView('activity');
+      await startTask('prepare');
     });
   const confirmRender = () =>
     perform(async () => {
@@ -1227,11 +1455,23 @@ export default function App() {
         openSettings();
         throw new Error('请先配置配音模型的 API Key。');
       }
-      const confirmed = await api(endpoint(project, 'approve'), { hash: project.scriptHash });
-      updateProject(confirmed);
-      await api(endpoint(confirmed, 'render'), {});
-      setApproveOpen(false);
-      setView('activity');
+      try {
+        const confirmed = await api(endpoint(project, 'approve'), { hash: project.scriptHash });
+        updateProject(confirmed);
+        await startTask('render', {}, confirmed);
+      } catch (error) {
+        setApproveOpen(false);
+        setView('activity');
+        setRequestError({
+          projectId: project.id,
+          title: '制作请求未能启动',
+          message: error.message,
+          stage: '确认并启动制作',
+          at: new Date().toISOString(),
+          httpStatus: error.httpStatus,
+        });
+        throw error;
+      }
     });
   const resolveIssue = (index) =>
     perform(async () => {
@@ -1260,7 +1500,7 @@ export default function App() {
       const value = await api('/api/settings', { config, keys });
       setSettings(value);
       setSettingsOpen(false);
-      toast.success('三模型配置已保存。');
+      toast.success('模型与制作设置已保存。');
     });
   const reveal = () =>
     perform(async () => {
@@ -1285,6 +1525,15 @@ export default function App() {
     if (!project) return [];
     const all = (project.chat || []).map((message, i) => ({
       ...message,
+      referenceContent: message.attachments?.length ? (
+        <ReferenceImages
+          images={message.attachments.map((image) => ({
+            ...image,
+            src: endpoint(project, 'reference/' + image.id),
+          }))}
+          onPreview={setReferencePreview}
+        />
+      ) : null,
       id: 'message-' + i,
       file:
         message.role === 'assistant' && project.script
@@ -1309,6 +1558,10 @@ export default function App() {
     setActiveId(null);
     localStorage.setItem('tutor-project', 'new');
     setOutput(false);
+    setSource('');
+    setSourceName('');
+    setKnowledge('');
+    setTitle('');
     setView('script');
     setMobilePane('preview');
   };
@@ -1316,7 +1569,7 @@ export default function App() {
     <div className="project-sidebar">
       <div className="brand">
         <span className="brand-symbol">
-          <Clapperboard size={19} />
+          <img src={new URL('../../build/tutor.svg', import.meta.url).href} alt="" />
         </span>
         <div>
           <strong>
@@ -1395,7 +1648,12 @@ export default function App() {
         <strong>{project?.title || '新教程'}</strong>
       </div>
       <div className="header-actions">
-        <Badge variant="outline" className={finished ? 'success-badge' : ''}>
+        <Badge
+          variant="outline"
+          className={
+            failure && !failure.cancelled ? 'failure-badge' : finished ? 'success-badge' : ''
+          }
+        >
           {finished ? (
             <CheckCircle2 size={12} />
           ) : (
@@ -1418,7 +1676,7 @@ export default function App() {
       </span>
       <div>
         <h2>创作助手</h2>
-        <p>{settings?.config.roles.editor.model || 'Qwen Max'} · 改稿与知识纠正</p>
+        <p>{settings?.config.roles.editor.model || 'deepseek-v4.1-flash'} · 改稿与知识纠正</p>
       </div>
       <kbd>⌃ K</kbd>
     </div>
@@ -1470,7 +1728,13 @@ export default function App() {
                 ' 个分镜 · 第 ' +
                 project.revision +
                 ' 版'
-              : '正在把录像整理成可审核的教程剧本'}
+              : failure
+                ? failure.cancelled
+                  ? '任务已取消，可重新开始'
+                  : '剧本生成失败，请查看右侧错误详情'
+                : busy
+                  ? '正在把录像整理成可审核的教程剧本'
+                  : '素材已准备好，等待生成剧本'}
           </p>
           <button onClick={showKnowledge}>
             <FileText size={12} />
@@ -1497,6 +1761,30 @@ export default function App() {
     ) : null;
   return (
     <div className="app-root rb-theme-scope">
+      <input
+        ref={videoInputRef}
+        type="file"
+        hidden
+        multiple
+        accept={VIDEO_EXTENSIONS.join(',')}
+        aria-label="选择视频文件"
+        onChange={(event) => {
+          acceptVideoFiles([...event.target.files]);
+          event.target.value = '';
+        }}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        hidden
+        multiple
+        accept={IMAGE_TYPES.join(',')}
+        aria-label="选择参考图片"
+        onChange={(event) => {
+          addReferenceImages([...event.target.files]);
+          event.target.value = '';
+        }}
+      />
       <Shell sidebar={sidebar} header={header}>
         <Workflow
           steps={STEPS}
@@ -1570,10 +1858,51 @@ export default function App() {
               placeholder={
                 project?.script ? '告诉我想改哪一段、怎么改…' : '导入视频后，就可以在这里一起改稿'
               }
-              disabled={!project?.script || pending}
+              disabled={!project?.script || pending || readingImages}
               onSend={send}
               onCancel={cancel}
-              onAttach={showKnowledge}
+              onAttach={() => imageInputRef.current?.click()}
+              hasAttachments={referenceImages.length > 0}
+              composerAccessory={
+                <ReferenceImages
+                  images={referenceImages}
+                  onRemove={(id) => setImages(referenceImages.filter((image) => image.id !== id))}
+                  onPreview={setReferencePreview}
+                  disabled={busy || pending || readingImages}
+                  hint={!!project?.script}
+                />
+              }
+              onPaste={pasteReferences}
+              dragging={imageDragging}
+              onDragEnter={(event) => {
+                if (event.dataTransfer.types.includes('Files')) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  imageDragDepth.current++;
+                  setImageDragging(true);
+                }
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect =
+                  busy || pending || !project?.script ? 'none' : 'copy';
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (--imageDragDepth.current <= 0) {
+                  imageDragDepth.current = 0;
+                  setImageDragging(false);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                imageDragDepth.current = 0;
+                setImageDragging(false);
+                addReferenceImages([...event.dataTransfer.files]);
+              }}
               onArtifact={() => {
                 setView('script');
                 setMobilePane('preview');
@@ -1605,6 +1934,10 @@ export default function App() {
                   hasKey,
                   openSettings,
                   inspection,
+                  acceptVideoFiles,
+                  sourceName,
+                  setSourceName,
+                  uploadingVideo,
                 }}
                 maxDuration={settings?.config.limits.maxDuration}
               />
@@ -1631,6 +1964,19 @@ export default function App() {
                   </span>
                 </div>
                 <div className="preview-content">
+                  <FailurePanel
+                    project={project}
+                    requestError={taskError}
+                    openSettings={openSettings}
+                    showActivity={() => {
+                      setView('activity');
+                      requestAnimationFrame(() =>
+                        document
+                          .querySelector('.request-failures')
+                          ?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+                      );
+                    }}
+                  />
                   {project.error && !busy && (
                     <div className="task-error" role="alert">
                       <strong>
@@ -1681,13 +2027,13 @@ export default function App() {
                       }}
                     />
                   )}
-                  {view === 'script' && !scriptDraft && (
+                  {view === 'script' && !scriptDraft && !failure && (
                     <div className="waiting-script">
                       <WandSparkles size={30} />
                       <h3>{busy ? '正在把录像整理成教程' : '素材已准备好'}</h3>
                       <p>
                         {busy
-                          ? 'Omni 读画面，Max 改写，再由 Omni 对照原片复核。完成后剧本会出现在这里。'
+                          ? 'Omni 读画面，改稿模型改写，再由 Omni 对照原片复核。完成后剧本会出现在这里。'
                           : '先生成剧本，再逐段调整解说与画面。'}
                       </p>
                       {!busy && (
@@ -1728,12 +2074,24 @@ export default function App() {
                           busy={busy}
                           elapsed={elapsed}
                           title={project.job?.label || project.progress.stage}
+                          failed={!!failure && !failure.cancelled}
+                          cancelled={!!failure?.cancelled}
                           onCancel={cancel}
                         />
                       </div>
-                      <div className="usage-widget">
+                      <RequestFailures records={project.usage} />
+                      <details className="usage-widget">
+                        <summary>
+                          <ChevronDown size={13} />
+                          <span>模型调用与费用</span>
+                          <span>
+                            {totals.calls} 次调用 · 输入 {compact(totals.input)} / 输出{' '}
+                            {compact(totals.output)} · 估算 {money(totals.cost)}
+                            {totals.unpriced > 0 && ' · ' + totals.unpriced + ' 次费用未知'}
+                          </span>
+                        </summary>
                         <Usage records={project.usage} totals={totals} />
-                      </div>
+                      </details>
                       {project.progress.streamText && (
                         <details className="stream-details">
                           <summary>
@@ -1781,30 +2139,37 @@ export default function App() {
                       <strong>
                         {busy
                           ? project.progress.stage
-                          : dirty || jsonDirty
-                            ? '修改已保留在本机，保存后即可审核'
-                            : project.review?.issues.some(
-                                  (issue) =>
-                                    issue.severity === 'blocking' && issue.resolved !== true,
-                                )
-                              ? '先核对上方提示，再审核制作'
-                              : finished
-                                ? '教程已完成，可以预览与保存'
-                                : project.script
-                                  ? '剧本已准备好，下一步由你审核'
-                                  : '从剧本开始制作'}
+                          : taskError
+                            ? '任务未能启动，请检查上方原因'
+                            : failure
+                              ? failure.cancelled
+                                ? '任务已取消，可重新开始'
+                                : '任务失败，请先检查上方错误'
+                              : project.review?.issues.some((issue) => issue.severity === 'blocking' && issue.resolved !== true)
+                                ? '先核对上方提示，再审核制作'
+                              : dirty || jsonDirty
+                                ? '修改已保留在本机，保存后即可审核'
+                                : finished
+                                  ? '教程已完成，可以预览与保存'
+                                  : project.script
+                                    ? '剧本已准备好，下一步由你审核'
+                                    : '从剧本开始制作'}
                       </strong>
                       <small>
                         {busy
-                          ? Math.round(project.progress.percent) +
+                          ? Math.round(safePercent(project.progress.percent)) +
                             '% · 约 ' +
                             (project.progress.streamEstimate || 0) +
                             ' 生成 Token'
-                          : finished
-                            ? '字幕、剧本、时间表和成本记录均已保存'
-                            : project.script
-                              ? '配音不重叠 · 长解说自动停顿 · 保留无声观察'
-                              : '先分析画面，再纠正表达与知识问题'}
+                          : taskError
+                            ? taskError.stage
+                            : failure
+                              ? '失败阶段：' + failure.stage
+                              : finished
+                                ? '字幕、剧本、时间表和成本记录均已保存'
+                                : project.script
+                                  ? '配音不重叠 · 长解说自动停顿 · 保留无声观察'
+                                  : '先分析画面，再纠正表达与知识问题'}
                       </small>
                     </p>
                   </div>
@@ -1833,7 +2198,13 @@ export default function App() {
                   ) : (
                     <Button
                       size="sm"
-                      onClick={() => (project.script ? setApproveOpen(true) : prepare())}
+                      onClick={() =>
+                        canRender
+                          ? retryRender()
+                          : project.script
+                            ? setApproveOpen(true)
+                            : prepare()
+                      }
                       disabled={
                         pending ||
                         dirty ||
@@ -1844,7 +2215,15 @@ export default function App() {
                       }
                     >
                       <Check size={14} />
-                      {project.script ? '审核并制作' : '生成剧本'}
+                      {canRender
+                        ? failure || taskError
+                          ? '重试制作'
+                          : '开始制作'
+                        : project.script
+                          ? '审核并制作'
+                          : failure || taskError
+                            ? '重试生成剧本'
+                            : '生成剧本'}
                     </Button>
                   )}
                 </div>
@@ -1868,7 +2247,7 @@ export default function App() {
           </span>
           <span className="statusbar-cost">
             估算 {money(totals.cost)}
-            {totals.unpriced > 0 && ' + ' + totals.unpriced + ' 次用量未知'}
+            {totals.unpriced > 0 && ' + ' + totals.unpriced + ' 次费用未知'}
           </span>
         </footer>
       </Shell>
@@ -1995,6 +2374,20 @@ export default function App() {
               }
               onSave={saveVideo}
               onReveal={reveal}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!referencePreview} onOpenChange={(open) => !open && setReferencePreview(null)}>
+        <DialogContent className="reference-image-dialog">
+          <DialogHeader>
+            <DialogTitle>{referencePreview?.name || '参考图片'}</DialogTitle>
+            <DialogDescription>改稿时使用的图片参考</DialogDescription>
+          </DialogHeader>
+          {referencePreview && (
+            <img
+              src={referencePreview.dataUrl || referencePreview.src}
+              alt={referencePreview.name}
             />
           )}
         </DialogContent>

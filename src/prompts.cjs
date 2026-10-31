@@ -69,7 +69,7 @@ function reviewPrompt(script, info, knowledge, sourceId, partial = false) {
     (partial
       ? '本次只提供此素材的分镜子集。只校对此子集并在script.scenes返回相同ID数量的分镜；保留各场景id、source_id和章节归属。不要补入其他素材的场景或标题卡，忽略章节必须全部出现的要求。'
       : '') +
-    '\n现在对照真实视频逐段校对剧本。特别检查按钮、时间点、前后顺序和知识解释。可直接纠正有证据的错误。返回 {"script":完整修订剧本,"issues":[{"scene":"s01","severity":"warning或blocking","message":"问题说明"}],"summary":"校对摘要"}。issues描述返回的修订稿仍需关注的问题：已经在返回script中修正的错误只记warning，不能再标blocking。blocking仅用于当前返回稿仍然存在、必须由人工处理的确定错误；看不清且已保守处理可以warning。freeze模式只需要freeze_at，不需要补source_start/source_end。不要因为视频没执行后续任务就要求补录，把未执行的内容从解说移除。\n素材信息：' +
+    '\n现在对照真实视频逐段校对剧本。特别检查按钮、时间点、前后顺序和知识解释。可直接纠正有证据的错误。返回 {"script":完整修订剧本,"issues":[{"scene":"s01","severity":"warning或blocking","message":"当前返回剧本仍存在的问题"}],"corrections":[{"scene":"s01","message":"本次已完成的修正"}],"summary":"校对摘要"}。issues只描述你返回的最终剧本中尚未解决的问题；已修正的问题必须放入corrections，不得继续标为blocking。blocking表示当前版本必须在人工确认前解决的确定错误；看不清且已保守处理可以warning。严格遵守上面冻结模式只需freeze_at的规则，不要要求定格场景提供source_start/source_end。不要因为视频没执行后续任务就要求补录，把未执行的内容从解说移除。\n素材信息：' +
     JSON.stringify(info) +
     '\n知识：<knowledge>' +
     knowledge +

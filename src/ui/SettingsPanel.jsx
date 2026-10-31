@@ -9,6 +9,8 @@ import {
   customSource,
   requestEndpoint,
   selectRoleSource,
+  selectRoleModel,
+  MODEL_OPTIONS,
   updateSource,
 } from '../model-sources.mjs';
 
@@ -23,6 +25,26 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
   const [sourceId, setSourceId] = useState(value.sources[0].id);
   const [advanced, setAdvanced] = useState(false);
   const [raw, setRaw] = useState('');
+  const [catalogs, setCatalogs] = useState({});
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState('');
+  const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...value.style.brand };
+  const changeBrand = (field, input) =>
+    setValue((previous) => ({
+      ...previous,
+      style: {
+        ...previous.style,
+        brand: {
+          enabled: true,
+          name: 'YAK',
+          tagline: 'TUTORIAL STUDIO',
+          ...previous.style.brand,
+          [field]: input,
+        },
+      },
+    }));
+  const changeStyle = (field, input) =>
+    setValue((previous) => ({ ...previous, style: { ...previous.style, [field]: input } }));
   const source = value.sources.find((item) => item.id === sourceId) || value.sources[0];
   const changeSource = (field, input) =>
     setValue((previous) => updateSource(previous, source.id, { [field]: input }));
@@ -37,6 +59,31 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
     setSourceId(item.id);
   };
   const inUse = Object.values(value.roles).some((role) => role.sourceId === source.id);
+  const loadModels = async () => {
+    setLoadingModels(true);
+    setModelError('');
+    try {
+      const response = await fetch('/api/models', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tutor-Token': document.querySelector('meta[name="tutor-token"]').content,
+        },
+        body: JSON.stringify({ source, key: keys[source.credential] || undefined }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || '模型列表加载失败');
+      setCatalogs((previous) => ({
+        ...previous,
+        [source.id]: { endpoint: source.chatBaseUrl, models: result.models },
+      }));
+      toast.success('已加载 ' + result.models.length + ' 个模型');
+    } catch (error) {
+      setModelError(error.message);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
   return (
     <div className="settings-panel">
       <div className="source-heading">
@@ -105,7 +152,7 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
               <span>
                 API Key{' '}
                 <Badge variant="secondary">
-                  {credentials[source.credential] ? '已安全保存' : '待配置'}
+                  {credentials[source.credential] ? '已配置' : '待配置'}
                 </Badge>
               </span>
               <Input
@@ -137,6 +184,19 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
             画面理解和剧本改写共用此地址，自动请求 <code>/chat/completions</code>。
             {source.kind === 'bailian' && '也支持百炼工作空间专属域名。'}
           </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loadingModels || !source.chatBaseUrl}
+            onClick={loadModels}
+          >
+            {loadingModels ? '正在加载模型…' : '从此源加载可选模型'}
+          </Button>
+          {modelError && (
+            <p role="alert" className="model-list-error">
+              {modelError}
+            </p>
+          )}
           <details
             className="source-speech"
             open={source.kind === 'bailian' || value.roles.speech.sourceId === source.id}
@@ -181,52 +241,117 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
         <span>分别选择源，继承对应地址与 Key</span>
       </div>
       <fieldset disabled={advanced || pending} className="role-cards">
-        {ROLES.map(([role, number, label, Icon]) => (
-          <section key={role}>
-            <h3>
-              <span>{number}</span>
-              <Icon size={14} /> {label}
-            </h3>
-            <label>
-              模型源
-              <select
-                aria-label={label + '模型源'}
-                value={value.roles[role].sourceId}
-                onChange={(e) =>
-                  setValue((previous) => selectRoleSource(previous, role, e.target.value))
-                }
-              >
-                {value.sources.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
+        {ROLES.map(([role, number, label, Icon]) => {
+          const chosenSource = value.sources.find((item) => item.id === value.roles[role].sourceId);
+          const catalog = catalogs[chosenSource?.id];
+          const options =
+            catalog?.endpoint === chosenSource?.chatBaseUrl ? catalog.models : MODEL_OPTIONS[role];
+          const custom = !options.includes(value.roles[role].model);
+          return (
+            <section key={role}>
+              <h3>
+                <span>{number}</span>
+                <Icon size={14} /> {label}
+              </h3>
+              <label>
+                模型源
+                <select
+                  aria-label={label + '模型源'}
+                  value={value.roles[role].sourceId}
+                  onChange={(e) =>
+                    setValue((previous) => selectRoleSource(previous, role, e.target.value))
+                  }
+                >
+                  {value.sources.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                模型
+                <select
+                  aria-label={label + '模型'}
+                  value={custom ? '__custom' : value.roles[role].model}
+                  onChange={(e) =>
+                    setValue((previous) =>
+                      selectRoleModel(
+                        previous,
+                        role,
+                        e.target.value === '__custom' ? '' : e.target.value,
+                      ),
+                    )
+                  }
+                >
+                  {options.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                  <option value="__custom">手动输入模型名称</option>
+                </select>
+                {custom && (
+                  <Input
+                    aria-label={label + '自定义模型名称'}
+                    value={value.roles[role].model}
+                    onChange={(e) =>
+                      setValue((previous) => selectRoleModel(previous, role, e.target.value))
+                    }
+                    placeholder="输入此源支持的模型名称"
+                  />
+                )}
+              </label>
+              {value.roles[role].pricingKnown === false && (
+                <p className="source-hint">
+                  单价待配置，费用显示为未知。核对下方计费单价后可启用估算。
+                </p>
+              )}
+              <details className="role-pricing">
+                <summary>计费单价 · 元 / 百万 Token</summary>
+                {[
+                  ['inputPrice', '输入'],
+                  ['outputPrice', '输出'],
+                  ['cachedPrice', '缓存输入'],
+                ].map(([field, title]) => (
+                  <label key={field}>
+                    {title}
+                    <Input
+                      aria-label={label + title + '单价'}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={value.roles[role][field]}
+                      onChange={(e) => setRole(role, field, Number(e.target.value))}
+                    />
+                  </label>
                 ))}
-              </select>
-            </label>
-            <label>
-              模型
-              <Input
-                aria-label={label + '模型'}
-                value={value.roles[role].model}
-                onChange={(e) => setRole(role, 'model', e.target.value)}
-              />
-            </label>
-            <div className="role-endpoint">
-              <span>
-                {role === 'speech'
-                  ? value.roles[role].protocol === 'dashscope-tts'
-                    ? '百炼原生 TTS'
-                    : 'Audio Speech'
-                  : 'Chat Completions'}
-              </span>
-              <code>
-                {value.roles[role].baseUrl
-                  ? requestEndpoint(value.roles[role])
-                  : '请补充所选源的接口地址'}
-              </code>
-            </div>
-          </section>
-        ))}
+                <label className="pricing-enable">
+                  <input
+                    type="checkbox"
+                    checked={value.roles[role].pricingKnown !== false}
+                    onChange={(e) => setRole(role, 'pricingKnown', e.target.checked)}
+                  />
+                  已核对单价，启用费用估算
+                </label>
+              </details>
+              <div className="role-endpoint">
+                <span>
+                  {role === 'speech'
+                    ? value.roles[role].protocol === 'dashscope-tts'
+                      ? '百炼原生 TTS'
+                      : 'Audio Speech'
+                    : 'Chat Completions'}
+                </span>
+                <code>
+                  {value.roles[role].baseUrl
+                    ? requestEndpoint(value.roles[role])
+                    : '请补充所选源的接口地址'}
+                </code>
+              </div>
+            </section>
+          );
+        })}
       </fieldset>
       <fieldset disabled={advanced || pending} className="speech-settings">
         <label>
@@ -259,6 +384,93 @@ export default function SettingsPanel({ value, setValue, credentials, save, pend
             }
           />
         </label>
+      </fieldset>
+      <div className="settings-section-title brand-section-title">
+        <strong>成片品牌与章节</strong>
+        <span>内置字体，离线可用 · 保存后用于下次制作</span>
+      </div>
+      <fieldset disabled={advanced || pending} className="brand-settings">
+        <div
+          style={{
+            '--brand-paper': value.style.background,
+            '--brand-ink': value.style.ink,
+            '--brand-accent': value.style.accent,
+            '--brand-gap': (value.style.chapterGap ?? 12) + 'px',
+          }}
+        >
+          <div className="brand-preview" aria-label="成片商标预览">
+            {brand.enabled && (
+              <div className="brand-preview-wordmark">
+                <div className="brand-preview-name">
+                  <span>{brand.name || '品牌名称'}</span>
+                  <i />
+                </div>
+                {brand.tagline && <div className="brand-preview-tagline">{brand.tagline}</div>}
+              </div>
+            )}
+            <div className="brand-preview-step">
+              <strong>教程步骤预览</strong>
+              <small>02 / 03 · 当前章节</small>
+            </div>
+          </div>
+          <div className="brand-preview-track" aria-label="章节分段预览">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+        <label className="brand-enabled">
+          <input
+            type="checkbox"
+            checked={brand.enabled}
+            onChange={(e) => changeBrand('enabled', e.target.checked)}
+          />
+          显示左上角品牌
+        </label>
+        <div className="brand-fields">
+          <label>
+            品牌名称
+            <Input
+              aria-label="成片品牌名称"
+              disabled={!brand.enabled}
+              maxLength={24}
+              value={brand.name}
+              onChange={(e) => changeBrand('name', e.target.value)}
+            />
+          </label>
+          <label>
+            品牌副标题
+            <Input
+              aria-label="成片品牌副标题"
+              disabled={!brand.enabled}
+              maxLength={48}
+              placeholder="可留空"
+              value={brand.tagline}
+              onChange={(e) => changeBrand('tagline', e.target.value)}
+            />
+          </label>
+          <label>
+            品牌与进度条点缀色
+            <input
+              aria-label="成片点缀色"
+              type="color"
+              value={value.style.accent}
+              onChange={(e) => changeStyle('accent', e.target.value)}
+            />
+          </label>
+          <label>
+            章节分段间距（像素）
+            <Input
+              aria-label="章节分段间距"
+              type="number"
+              min="6"
+              max="24"
+              step="1"
+              value={value.style.chapterGap ?? 12}
+              onChange={(e) => changeStyle('chapterGap', Number(e.target.value))}
+            />
+          </label>
+        </div>
       </fieldset>
       <button
         className="text-control"

@@ -1,13 +1,14 @@
-export async function api(url, data) {
+export async function api(url, data, { signal } = {}) {
   const token = document.querySelector('meta[name="tutor-token"]').content;
   const response = await fetch(
     url,
     data === undefined
-      ? {}
+      ? { signal }
       : {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Tutor-Token': token },
           body: JSON.stringify(data),
+          signal,
         },
   );
   const result = await response.json();
@@ -23,6 +24,30 @@ export const clock = (seconds = 0) => {
   );
 };
 export const basename = (value = '') => value.split(/[\\/]/).at(-1);
+export const parseVideoPaths = (text = '') =>
+  text
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean);
+export function parseScriptJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('JSON 格式不正确，请检查括号、逗号和引号后再保存。');
+  }
+}
+export const projectSources = (project) =>
+  project.sources || [
+    {
+      id: 'v01',
+      name: basename(project.originalSource || project.source),
+      info: project.info,
+    },
+  ];
+export const sceneSource = (project, scene) => {
+  const sources = projectSources(project);
+  return sources.find((source) => source.id === scene?.source_id) || sources[0];
+};
 export const compact = (n = 0) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toLocaleString());
 export const money = (n = 0) => '¥' + n.toFixed(4);
 export const voiceName = (voice) =>
@@ -48,9 +73,17 @@ export const status = (project) =>
 export const kind = (scene) =>
   ({ title: '章节标题', action: '操作演示', observe: '定格讲解' })[scene?.kind] || '分镜';
 export const frameTime = (scene, project) =>
-  Math.min(scene?.source_start ?? scene?.freeze_at ?? 0, project.info.duration - 0.04);
+  Math.max(
+    0,
+    Math.min(
+      scene?.source_start ?? scene?.freeze_at ?? 0,
+      sceneSource(project, scene).info.duration - 0.04,
+    ),
+  );
 export const endpoint = (project, action = '') =>
   '/api/projects/' + project.id + (action ? '/' + action : '');
+export const sourceEndpoint = (project, scene, action = 'source') =>
+  endpoint(project, action) + '?source=' + encodeURIComponent(sceneSource(project, scene).id);
 
 export function activitySteps(project) {
   if (!project) return [];

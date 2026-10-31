@@ -1,4 +1,6 @@
 const path = require('node:path');
+const ffmpeg = require('ffmpeg-static');
+const ffprobe = require('ffprobe-static').path;
 module.exports = {
   appId: 'com.yaklang.tutor',
   productName: 'Tutor',
@@ -23,11 +25,15 @@ module.exports = {
   asarUnpack: ['**/*.node'],
   extraResources: [
     {
-      from: 'node_modules/ffmpeg-static',
+      from: path.dirname(ffmpeg),
       to: 'tools',
-      filter: ['ffmpeg.exe', 'ffmpeg.exe.LICENSE', 'ffmpeg.exe.README'],
+      filter: [
+        path.basename(ffmpeg),
+        path.basename(ffmpeg) + '.LICENSE',
+        path.basename(ffmpeg) + '.README',
+      ],
     },
-    { from: 'node_modules/ffprobe-static/bin/win32/x64', to: 'tools', filter: ['ffprobe.exe'] },
+    { from: path.dirname(ffprobe), to: 'tools', filter: [path.basename(ffprobe)] },
     { from: 'build/generated/licenses', to: 'licenses' },
   ],
   win: {
@@ -39,6 +45,16 @@ module.exports = {
     signExecutable: false,
     signAndEditExecutable: true,
     artifactName: 'Tutor-${version}-windows-${arch}-portable.${ext}',
+  },
+  mac: {
+    target: ['dmg', 'zip'],
+    category: 'public.app-category.video',
+    artifactName: 'Tutor-${version}-mac-${arch}.${ext}',
+  },
+  linux: {
+    target: ['AppImage', 'tar.gz'],
+    category: 'AudioVideo',
+    artifactName: 'Tutor-${version}-linux-${arch}.${ext}',
   },
   nsis: {
     artifactName: 'Tutor-${version}-windows-${arch}-setup.${ext}',

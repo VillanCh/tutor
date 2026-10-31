@@ -83,10 +83,10 @@ app
     ipcMain.handle('pick-video', async (event) => {
       local(event);
       const r = await dialog.showOpenDialog(window, {
-        properties: ['openFile'],
-        filters: [{ name: '视频', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi'] }],
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: '视频', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
       });
-      return r.canceled ? null : r.filePaths[0];
+      return r.canceled ? null : r.filePaths;
     });
     ipcMain.handle('pick-knowledge', async (event) => {
       local(event);

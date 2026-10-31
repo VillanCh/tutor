@@ -2,11 +2,12 @@ const fs = require('node:fs/promises'),
   path = require('node:path'),
   { spawn } = require('node:child_process');
 const packaged = process.resourcesPath && path.basename(path.dirname(__dirname)) === 'app.asar';
+const extension = process.platform === 'win32' ? '.exe' : '';
 const FFMPEG = packaged
-    ? path.join(process.resourcesPath, 'tools/ffmpeg.exe')
+    ? path.join(process.resourcesPath, 'tools', 'ffmpeg' + extension)
     : require('ffmpeg-static'),
   FFPROBE = packaged
-    ? path.join(process.resourcesPath, 'tools/ffprobe.exe')
+    ? path.join(process.resourcesPath, 'tools', 'ffprobe' + extension)
     : require('ffprobe-static').path;
 function run(binary, args, { signal, onProgress, duration } = {}) {
   return new Promise((resolve, reject) => {
@@ -49,13 +50,18 @@ async function probe(file, signal) {
   const info = JSON.parse(stdout),
     v = info.streams.find((s) => s.codec_type === 'video'),
     a = info.streams.find((s) => s.codec_type === 'audio');
+  const rotation = Number(
+    v?.tags?.rotate ?? v?.side_data_list?.find((item) => item.rotation != null)?.rotation ?? 0,
+  );
+  const portraitRotation = Math.abs(Math.round(rotation)) % 180 === 90;
   return {
     duration: Number(info.format.duration),
-    width: v?.width,
-    height: v?.height,
+    width: portraitRotation ? v?.height : v?.width,
+    height: portraitRotation ? v?.width : v?.height,
+    rotation,
     audio: Boolean(a),
-    sampleRate: Number(a?.sample_rate),
-    channels: a?.channels,
+    sampleRate: a?.sample_rate ? Number(a.sample_rate) : null,
+    channels: a?.channels ?? null,
     bytes: Number(info.format.size),
   };
 }

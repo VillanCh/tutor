@@ -5,11 +5,17 @@ const http = require('node:http'),
 const { createReadStream } = require('node:fs'),
   { Store } = require('./store.cjs'),
   { Engine } = require('./engine.cjs');
+const { findSource } = require('./sources.cjs');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.avi': 'video/x-msvideo',
   '.json': 'application/json; charset=utf-8',
   '.srt': 'text/plain; charset=utf-8',
   '.png': 'image/png',
@@ -107,16 +113,33 @@ async function startServer({ dataDir, credentialIO, port = 0 } = {}) {
           const d = await readJson(req);
           if ((d.knowledge || '').length > store.config.limits.maxKnowledgeChars)
             throw Error('知识内容过长');
-          return json(store.public(await store.create(d.source, d.knowledge, d.title)));
+          return json(
+            store.public(await store.create(d.sources ?? d.source, d.knowledge, d.title)),
+          );
         }
         return json([...store.projects.values()].map((p) => store.public(p)));
+      }
+      if (url.pathname === '/api/import/inspect' && req.method === 'POST') {
+        const d = await readJson(req);
+        const controller = new AbortController();
+        res.once('close', () => controller.abort());
+        return json(await store.inspectSources(d.sources, controller.signal));
+      }
+      if (parts[0] === 'api' && parts[1] === 'drafts' && parts.length === 3) {
+        if (req.method === 'GET') return json(await store.readDraft(parts[2]));
+        if (req.method === 'POST') {
+          const d = await readJson(req);
+          await store.saveDraft(parts[2], d.draft ?? null);
+          return json({ saved: true });
+        }
       }
       if (parts[0] === 'api' && parts[1] === 'projects' && parts[2]) {
         const p = store.get(parts[2]),
           action = parts[3];
         if (req.method === 'GET') {
           if (!action) return json(store.public(p));
-          if (action === 'source') return await streamFile(req, res, p.source);
+          if (action === 'source')
+            return await streamFile(req, res, findSource(p, url.searchParams.get('source')).path);
           if (action === 'output') {
             if (!p.output) throw Error('尚未生成视频');
             const allowed = [
@@ -135,13 +158,17 @@ async function startServer({ dataDir, credentialIO, port = 0 } = {}) {
             return await streamFile(req, res, path.join(p.output.dir, name));
           }
           if (action === 'frame') {
+            const source = findSource(p, url.searchParams.get('source'));
             const t = Number(url.searchParams.get('t'));
-            if (!Number.isFinite(t) || t < 0 || t >= p.info.duration) throw Error('时间无效');
-            const file = path.join(store.dir(p.id), 'thumb-' + Math.round(t * 10) + '.png');
+            if (!Number.isFinite(t) || t < 0 || t >= source.info.duration) throw Error('时间无效');
+            const file = path.join(
+              store.dir(p.id),
+              'thumb-' + source.id + '-' + Math.round(t * 10) + '.png',
+            );
             try {
               await fs.access(file);
             } catch {
-              await require('./media.cjs').frame(p.source, t, file);
+              await require('./media.cjs').frame(source.path, t, file);
             }
             return await streamFile(req, res, file);
           }
@@ -163,6 +190,8 @@ async function startServer({ dataDir, credentialIO, port = 0 } = {}) {
           if (action === 'script')
             return json(store.public(await engine.saveScript(p.id, d.script)));
           if (action === 'approve') return json(store.public(await engine.confirm(p.id, d.hash)));
+          if (action === 'resolve-issue')
+            return json(store.public(await engine.resolveIssue(p.id, d.index, d.hash)));
           if (action === 'cancel') {
             engine.cancel(p.id);
             return json({ cancelled: true });

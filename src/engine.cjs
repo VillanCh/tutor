@@ -7,6 +7,7 @@ const { Provider } = require('./provider.cjs'),
   { normalizeScript, revise, approve, requireApproval, scriptHash } = require('./script.cjs'),
   prompts = require('./prompts.cjs'),
   { render } = require('./render.cjs');
+const { projectSources, sourceManifest } = require('./sources.cjs');
 class Engine extends EventEmitter {
   constructor(store) {
     super();
@@ -38,6 +39,7 @@ class Engine extends EventEmitter {
     p.job = { label, startedAt: new Date().toISOString() };
     p.status = 'working';
     p.error = null;
+    p.failedTask = null;
     p.progress = { stage: label, percent: 0, streamText: '', streamEstimate: 0 };
     this.controllers.set(id, controller);
     await this.store.save(p);
@@ -50,6 +52,15 @@ class Engine extends EventEmitter {
     } catch (error) {
       p.job = null;
       p.error = this.redact(error.message);
+      p.failedTask = {
+        action:
+          label === '生成旁白与视频' ? 'render' : label === '按要求修改剧本' ? 'edit' : 'prepare',
+        message:
+          label === '按要求修改剧本'
+            ? p.chat.findLast((message) => message.role === 'user')?.text
+            : undefined,
+        cancelled: controller.signal.aborted,
+      };
       p.status = p.script ? 'review' : 'draft';
       p.progress.stage = controller.signal.aborted ? '已取消' : '任务失败';
       await this.store.save(p);
@@ -68,19 +79,29 @@ class Engine extends EventEmitter {
   cancel(id) {
     this.controllers.get(id)?.abort();
   }
-  async videoContent(p, signal) {
+  async videoContent(p, signal, source = projectSources(p)[0], index = 0, count = 1) {
     const dir = this.store.dir(p.id),
-      file = path.join(dir, 'analysis.mp4');
+      file = path.join(dir, 'analysis-' + source.id + '-' + source.hash + '.mp4');
     let bytes;
     try {
       bytes = await fs.readFile(file);
     } catch {
-      bytes = await media.analysisVideo(p.source, file, signal, (r) =>
-        this.publish(p, { percent: r * 12, stage: '压缩分析视频' }),
-      );
+      const temporary = file + '.tmp.mp4';
+      try {
+        bytes = await media.analysisVideo(source.path, temporary, signal, (r) =>
+          this.publish(p, {
+            percent: ((index + r * 0.3) / count) * 43,
+            stage: '压缩分析视频 ' + source.name,
+          }),
+        );
+        await fs.rename(temporary, file);
+      } catch (error) {
+        await fs.rm(temporary, { force: true });
+        throw error;
+      }
     }
     if (bytes.length > this.store.config.limits.maxAnalysisBytes)
-      throw Error('分析视频过大，请缩短素材后重试');
+      throw Error('分析视频过大，请缩短素材后重试：' + source.name);
     return {
       type: 'video_url',
       video_url: { url: 'data:video/mp4;base64,' + bytes.toString('base64'), fps: 2 },
@@ -91,59 +112,124 @@ class Engine extends EventEmitter {
     await fs.writeFile(path.join(this.store.dir(p.id), file), JSON.stringify(value, null, 2));
     p.history.push({ stage, file, at: new Date().toISOString(), script: value.script || value });
   }
-  async audit(p, provider, script, video, signal) {
-    this.publish(p, { percent: 72, stage: 'Omni 对照视频校对', streamText: '', streamEstimate: 0 });
-    const result = await provider.json(
-      'vision',
-      '剧本视觉校对',
-      [
-        { role: 'system', content: prompts.RULES || '只根据可验证的画面和知识修订剧本。' },
-        {
-          role: 'user',
-          content: [
-            video,
-            { type: 'text', text: prompts.reviewPrompt(script, p.info, p.knowledge) },
-          ],
-        },
-      ],
-      signal,
-    );
-    const corrected = normalizeScript(result.value, p.info.duration);
+  async audit(p, provider, script, signal) {
+    const sources = projectSources(p);
+    const issues = [],
+      summaries = [];
+    let corrected = script;
+    for (const [index, source] of sources.entries()) {
+      const scenes = corrected.scenes.filter((s) => s.source_id === source.id);
+      if (sources.length > 1 && !scenes.length) continue;
+      const video = await this.videoContent(p, signal, source);
+      this.publish(p, {
+        percent: 72 + (index / sources.length) * 26,
+        stage: 'Omni 校对 ' + source.name,
+        streamText: '',
+        streamEstimate: 0,
+      });
+      const partial = sources.length > 1 ? { ...corrected, scenes } : corrected;
+      const result = await provider.json(
+        'vision',
+        '剧本视觉校对 · ' + source.id,
+        [
+          { role: 'system', content: prompts.RULES || '只根据可验证的画面和知识修订剧本。' },
+          {
+            role: 'user',
+            content: [
+              video,
+              {
+                type: 'text',
+                text: prompts.reviewPrompt(
+                  partial,
+                  sourceManifest(p),
+                  p.knowledge,
+                  source.id,
+                  sources.length > 1,
+                ),
+              },
+            ],
+          },
+        ],
+        signal,
+      );
+      if (sources.length === 1) corrected = normalizeScript(result.value, sources);
+      else {
+        const reviewed = (result.value.script || result.value).scenes;
+        const expected = new Set(scenes.map((s) => s.id));
+        if (
+          !Array.isArray(reviewed) ||
+          reviewed.length !== expected.size ||
+          new Set(reviewed.map((s) => s.id)).size !== expected.size ||
+          reviewed.some((s) => !expected.has(s.id) || s.source_id !== source.id)
+        )
+          throw Error('视频校对必须保留当前素材的分镜 ID 和 source_id');
+        const replacements = new Map(reviewed.map((s) => [s.id, s]));
+        corrected = normalizeScript(
+          { ...corrected, scenes: corrected.scenes.map((s) => replacements.get(s.id) || s) },
+          sources,
+        );
+      }
+      issues.push(
+        ...(Array.isArray(result.value.issues)
+          ? result.value.issues.map((issue) => ({
+              scene: String(issue?.scene || ''),
+              severity: issue?.severity === 'blocking' ? 'blocking' : 'warning',
+              message: String(issue?.message || ''),
+              source_id: source.id,
+            }))
+          : []),
+      );
+      summaries.push(source.name + '：' + String(result.value.summary || '完成视觉校对'));
+    }
     p.review = {
-      issues: Array.isArray(result.value.issues) ? result.value.issues : [],
-      summary: String(result.value.summary || '完成视觉校对'),
+      issues,
+      summary: summaries.join('\n'),
       at: new Date().toISOString(),
     };
-    await this.keepVersion(p, 'audit', result.value);
+    await this.keepVersion(p, 'audit', { script: corrected, ...p.review });
     return corrected;
   }
   async prepare(id) {
     return this.task(id, '生成并校对剧本', async (p, config, signal) => {
       p.approval = null;
       const provider = this.provider(p, config),
-        video = await this.videoContent(p, signal);
-      this.publish(p, {
-        percent: 16,
-        stage: 'Omni 生成初版 JSON',
-        streamText: '',
-        streamEstimate: 0,
-      });
-      const draft = await provider.json(
-        'vision',
-        '视频分析与初稿',
-        [
-          {
-            role: 'user',
-            content: [video, { type: 'text', text: prompts.draftPrompt(p.info, p.knowledge) }],
-          },
-        ],
-        signal,
-      );
-      const initial = draft.value.script || draft.value;
+        sources = projectSources(p),
+        drafts = [];
+      for (const [index, source] of sources.entries()) {
+        const video = await this.videoContent(p, signal, source, index, sources.length);
+        this.publish(p, {
+          percent: ((index + 0.3) / sources.length) * 43,
+          stage: 'Omni 分析素材 ' + (index + 1) + ' / ' + sources.length + ' · ' + source.name,
+          streamText: '',
+          streamEstimate: 0,
+        });
+        const draft = await provider.json(
+          'vision',
+          '视频分析与初稿 · ' + source.id,
+          [
+            {
+              role: 'user',
+              content: [
+                video,
+                {
+                  type: 'text',
+                  text: prompts.draftPrompt(
+                    sourceManifest(p).filter((s) => s.source_id === source.id),
+                    p.knowledge,
+                  ),
+                },
+              ],
+            },
+          ],
+          signal,
+        );
+        drafts.push({ source_id: source.id, script: normalizeScript(draft.value, [source]) });
+      }
+      const initial = sources.length === 1 ? drafts[0].script : { drafts };
       await this.keepVersion(p, 'initial', initial);
       this.publish(p, {
         percent: 43,
-        stage: 'Max 修订表达与知识问题',
+        stage: sources.length > 1 ? 'Max 联合编排多视频剪辑脚本' : 'Max 修订表达与知识问题',
         streamText: '',
         streamEstimate: 0,
       });
@@ -156,15 +242,16 @@ class Engine extends EventEmitter {
             content: prompts.editPrompt(
               initial,
               p.knowledge,
-              '纠正初稿错误、知识问题和不严谨的描述，保持实际操作范围。',
+              '综合所有素材初稿，纠正知识和表达，组织为一份连贯的教程剪辑脚本。可跨素材选择、重排片段并删除重复步骤，保留各片段的 source_id 和片内时间，不要求用完每段素材。',
+              sourceManifest(p),
             ),
           },
         ],
         signal,
       );
-      const revised = normalizeScript(edited.value, p.info.duration);
+      const revised = normalizeScript(edited.value, sources);
       await this.keepVersion(p, 'max', revised);
-      const final = await this.audit(p, provider, revised, video, signal);
+      const final = await this.audit(p, provider, revised, signal);
       revise(p, final);
       p.title = final.title;
       p.chat.push({
@@ -185,8 +272,7 @@ class Engine extends EventEmitter {
     return this.task(id, '按要求修改剧本', async (p, config, signal) => {
       p.approval = null;
       p.chat.push({ role: 'user', text: request, at: new Date().toISOString() });
-      const provider = this.provider(p, config),
-        video = await this.videoContent(p, signal);
+      const provider = this.provider(p, config);
       this.publish(p, {
         percent: 20,
         stage: 'Max 按你的要求改写',
@@ -196,12 +282,17 @@ class Engine extends EventEmitter {
       const edited = await provider.json(
         'editor',
         '对话修改剧本',
-        [{ role: 'user', content: prompts.editPrompt(p.script, p.knowledge, request) }],
+        [
+          {
+            role: 'user',
+            content: prompts.editPrompt(p.script, p.knowledge, request, sourceManifest(p)),
+          },
+        ],
         signal,
       );
-      const revised = normalizeScript(edited.value, p.info.duration);
+      const revised = normalizeScript(edited.value, projectSources(p));
       await this.keepVersion(p, 'max-edit', revised);
-      const final = await this.audit(p, provider, revised, video, signal);
+      const final = await this.audit(p, provider, revised, signal);
       revise(p, final);
       p.title = final.title;
       p.chat.push({
@@ -219,7 +310,7 @@ class Engine extends EventEmitter {
   async saveScript(id, input) {
     const p = this.store.get(id);
     if (p.job) throw Error('请等待当前任务结束');
-    const script = normalizeScript(input, p.info.duration);
+    const script = normalizeScript(input, projectSources(p));
     await this.keepVersion(p, 'manual', script);
     revise(p, script);
     p.title = script.title;
@@ -243,12 +334,32 @@ class Engine extends EventEmitter {
     this.publish(p, { stage: '脚本已人工确认' });
     return p;
   }
+  async resolveIssue(id, index, expectedHash) {
+    const p = this.store.get(id);
+    if (p.job) throw Error('请等待当前任务结束');
+    if (!p.script || scriptHash(p.script) !== expectedHash)
+      throw Error('剧本已更新，请重新核对当前版本');
+    if (!Number.isInteger(index) || !p.review?.issues?.[index]) throw Error('复核问题不存在');
+    Object.assign(p.review.issues[index], {
+      resolved: true,
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: 'human',
+    });
+    p.approval = null;
+    p.status = 'review';
+    await this.store.save(p);
+    this.publish(p, { stage: '问题已由你核对，确认剧本后即可制作' });
+    return p;
+  }
   async generate(id) {
     requireApproval(this.store.get(id));
     return this.task(id, '生成旁白与视频', async (p, config, signal) => {
       requireApproval(p);
-      if (p.sourceHash && (await require('./store.cjs').hashFile(p.source)) !== p.sourceHash)
-        throw Error('原始素材已变更，请重新导入和确认');
+      const sources = projectSources(p);
+      normalizeScript(p.script, sources);
+      for (const source of sources)
+        if (source.hash && (await require('./store.cjs').hashFile(source.path)) !== source.hash)
+          throw Error('原始素材已变更，请重新导入和确认：' + source.name);
       const dir = path.join(this.store.dir(id), 'output-r' + p.revision);
       await fs.mkdir(dir, { recursive: true });
       const voices = path.join(this.store.dir(id), 'voices');
@@ -302,6 +413,7 @@ class Engine extends EventEmitter {
       await fs.writeFile(path.join(dir, 'approval.json'), JSON.stringify(p.approval, null, 2));
       const result = await render({
         source: p.source,
+        sources,
         info: p.info,
         script: p.script,
         audio,

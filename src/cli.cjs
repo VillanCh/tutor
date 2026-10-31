@@ -9,6 +9,15 @@ function option(name, fallback = '') {
   const i = args.indexOf('--' + name);
   return i < 0 ? fallback : args[i + 1];
 }
+function options(name) {
+  const values = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== '--' + name) continue;
+    if (!args[i + 1] || args[i + 1].startsWith('--')) throw Error('--' + name + ' 缺少文件路径');
+    values.push(args[++i]);
+  }
+  return values;
+}
 (async () => {
   const dataDir = path.resolve(
     option('data', process.env.TUTOR_DATA_DIR || path.join(os.homedir(), '.tutor')),
@@ -33,9 +42,11 @@ function option(name, fallback = '') {
     }
   });
   if (command === 'prepare') {
-    const source = option('video');
-    if (!source)
-      throw Error('Usage: prepare --video file.mp4 [--knowledge facts.txt] [--data directory]');
+    const source = options('video');
+    if (!source.length)
+      throw Error(
+        'Usage: prepare --video first.mp4 [--video second.mov] [--knowledge facts.txt] [--data directory]',
+      );
     const knowledge = option('knowledge') ? await fs.readFile(option('knowledge'), 'utf8') : '';
     const p = await store.create(source, knowledge, option('title'));
     await engine.prepare(p.id);

@@ -8,6 +8,21 @@ const {
   stapleWithRetry,
 } = require('../scripts/signing.cjs');
 
+test('native packaging retains signed macOS settings and the filenames used by notarization', () => {
+  const config = require('../electron-builder.config.cjs');
+  assert.equal(config.forceCodeSigning, true);
+  assert.equal(config.mac.artifactName, 'Tutor-${version}-macOS-${arch}.${ext}');
+  assert.equal(config.mac.icon, 'build/tutor.icns');
+  assert.equal(config.mac.hardenedRuntime, true);
+  assert.equal(config.mac.notarize, false);
+  assert.equal(config.afterSign, './scripts/mac-notarize.cjs');
+  assert.equal(config.mac.entitlements, 'build/entitlements.mac.plist');
+  assert.equal(config.dmg.sign, true);
+  assert.equal(config.win.signExecutable, true);
+  assert.equal(config.win.signtoolOptions.sign, './scripts/windows-sign.cjs');
+  assert.ok(config.files.includes('src/**/*.mjs'));
+});
+
 test('signed release fails closed on incomplete credentials without printing secret values', () => {
   assert.throws(
     () => validateSigningEnvironment('darwin', { CSC_LINK: 'private-certificate' }),

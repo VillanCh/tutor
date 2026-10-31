@@ -53,11 +53,6 @@ module.exports = {
     signtoolOptions: { signingHashAlgorithms: ['sha256'], sign: './scripts/windows-sign.cjs' },
     artifactName: 'Tutor-${version}-windows-${arch}-portable.${ext}',
   },
-  mac: {
-    target: ['dmg', 'zip'],
-    category: 'public.app-category.video',
-    artifactName: 'Tutor-${version}-mac-${arch}.${ext}',
-  },
   linux: {
     target: ['AppImage', 'tar.gz'],
     category: 'AudioVideo',

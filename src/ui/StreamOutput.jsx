@@ -3,7 +3,7 @@ import { Check, Code2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './components/ui/button';
 
-export default function StreamOutput({ text, stage, estimate }) {
+export default function StreamOutput({ text, stage }) {
   const content = useRef(null);
   const follows = useRef(true);
   const [copied, setCopied] = useState(false);
@@ -49,7 +49,6 @@ export default function StreamOutput({ text, stage, estimate }) {
       </pre>
       <div className="stream-code-foot">
         <span>{stage}</span>
-        <span>约 {estimate || 0} Token</span>
       </div>
     </section>
   );

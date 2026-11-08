@@ -5,10 +5,12 @@ const test = require('node:test'),
   os = require('node:os');
 const { startServer } = require('../src/server.cjs'),
   { scriptHash } = require('../src/script.cjs');
+const { TestAccount, confirmModels } = require('./helpers/account.cjs');
 test('HTTP rejects unauthenticated mutation and unconfirmed rendering', async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tutor-server-')),
-    s = await startServer({ dataDir });
+    s = await startServer({ dataDir, account: new TestAccount() });
   try {
+    await confirmModels(s.store);
     assert.equal(
       (await fetch(s.url + '/api/settings', { method: 'POST', body: '{}' })).status,
       400,

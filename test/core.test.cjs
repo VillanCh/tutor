@@ -48,7 +48,7 @@ function script() {
 }
 test('all three roles are configurable and required', () => {
   const c = validateConfig(DEFAULTS);
-  assert.equal(c.roles.editor.model, 'qwen3.8-max');
+  assert.equal(c.roles.editor.model, 'deepseek-v4.1-flash');
   delete c.roles.editor;
   assert.throws(() => validateConfig(c), /不完整/);
 });

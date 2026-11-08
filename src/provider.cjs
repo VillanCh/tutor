@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { parseJson } = require('./script.cjs');
 const { requestEndpoint } = require('./model-sources.mjs');
+const { assertModelAllowed } = require('./model-policy.mjs');
 function usageRecord(role, stage, raw, sent, received, latency, error = null) {
   const u = raw || {},
     input = u.prompt_tokens ?? u.input_tokens ?? 0,
@@ -41,10 +42,12 @@ class Provider {
   }
   key(role) {
     const key = this.credentials[role.credential];
-    if (!key) throw Error('请配置 API Key：' + role.credential);
+    if (!key) throw Error('请先登录 YAKCOOL 账户');
     return key;
   }
   async request(role, stage, payload, signal, stream = false) {
+    assertModelAllowed(role.model);
+    assertModelAllowed(payload.model);
     const body = JSON.stringify(payload),
       start = Date.now();
     let bytes = 0,
@@ -135,8 +138,11 @@ class Provider {
         messages,
         stream: true,
         stream_options: { include_usage: true },
-        enable_thinking: false,
-        reasoning_effort: 'none',
+        ...(/deepseek/i.test(role.model)
+          ? { thinking: { type: 'disabled' } }
+          : /qwen/i.test(role.model)
+            ? { enable_thinking: false, reasoning_effort: 'none' }
+            : {}),
         max_tokens: 10000,
       },
       signal,

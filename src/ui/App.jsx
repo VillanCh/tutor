@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
+  ArrowDown,
+  ArrowUp,
   ArrowRight,
   AudioLines,
+  BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -15,17 +18,20 @@ import {
   History,
   LayoutList,
   LoaderCircle,
+  LogOut,
   Maximize2,
   MessageSquare,
   Mic2,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Settings2,
   ShieldCheck,
   Sparkles,
   Upload,
   Video,
+  Wallet,
   WandSparkles,
   X,
 } from 'lucide-react';
@@ -46,6 +52,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './components/ui/dropdown-menu';
 import Conversation from './vendor/tutor/ai-chat-2';
@@ -53,26 +61,32 @@ import Shell from './vendor/tutor/app-shell-9';
 import Workflow from './vendor/tutor/wizard-1';
 import Approval from './vendor/tutor/agent-approval-1';
 import Activity from './vendor/tutor/agent-activity-1';
-import Usage from './vendor/tutor/ai-usage-1';
 import SettingsPanel from './SettingsPanel';
+import BrandingPanel from './BrandingPanel';
+import { brandingDefaults, brandingSummary } from '../branding-options.mjs';
 import StreamOutput from './StreamOutput';
+import { balanceText, YakcoolAccountCard } from './YakcoolAccount';
+import { readLocal, writeLocal, loadProjectDraft } from './drafts.mjs';
+import { useGuide } from './GuideProvider';
 import {
   activitySteps,
   api,
   basename,
   clock,
-  compact,
   endpoint,
   frameTime,
   kind,
-  money,
+  parseVideoPaths,
+  parseScriptJson,
   phase,
+  projectSources,
+  sceneSource,
+  sourceEndpoint,
   status,
   voiceName,
 } from './workbench';
 
 const STEPS = ['导入素材', '对话改稿', '审核制作', '导出成片'];
-const EMPTY_TOTALS = { input: 0, output: 0, sent: 0, received: 0, cost: 0, calls: 0, unpriced: 0 };
 const VIEWS = [
   ['script', '剧本', LayoutList],
   ['video', '视频', Video],
@@ -123,14 +137,49 @@ function ImportPanel({
   knowledge,
   setKnowledge,
   chooseVideo,
+  dropVideos,
   chooseKnowledge,
+  branding,
+  setBranding,
   create,
   pending,
   hasKey,
   openSettings,
+  maxDuration = 600,
+  inspection,
 }) {
+  const files = parseVideoPaths(source);
+  const { openGuide } = useGuide();
+  const [dragging, setDragging] = useState(false);
+  const [pathsOpen, setPathsOpen] = useState(!window.tutorDesktop);
+  const inspecting = !!files.length && (inspection?.source !== source || inspection.loading);
+  const invalid =
+    !!inspection?.error || inspection?.overLimit || inspection?.files?.some((file) => file.error);
+  const move = (index, offset) => {
+    const next = [...files];
+    [next[index], next[index + offset]] = [next[index + offset], next[index]];
+    setSource(next.join('\n'));
+  };
   return (
-    <div className="import-panel">
+    <div
+      className="import-panel"
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+        event.preventDefault();
+        if (!pending) {
+          event.dataTransfer.dropEffect = 'copy';
+          setDragging(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (!pending) dropVideos(Array.from(event.dataTransfer.files));
+      }}
+    >
       <Badge variant="outline" className="intro-badge">
         <Clapperboard size={12} /> 新的教程
       </Badge>
@@ -138,25 +187,131 @@ function ImportPanel({
         把操作录像，<span>整理成清晰的教程。</span>
       </h2>
       <p className="intro-copy">
-        先给我一段视频和必要的知识。我们一起完善剧本，你确认后再生成配音与成片。
+        拖入一个或多个视频和必要的知识。我会综合所有素材生成剪辑脚本，我们一起完善，再由你确认制作。
       </p>
+      <button type="button" className="import-guide-link" onClick={() => openGuide('import')}>
+        <BookOpen size={13} /> 第一次制作？查看导入步骤 <ArrowRight size={12} />
+      </button>
       <button
-        className={'video-dropzone ' + (source ? 'has-source' : '')}
+        className={
+          'video-dropzone ' + (files.length ? 'has-source ' : '') + (dragging ? 'is-dragging' : '')
+        }
         onClick={chooseVideo}
         disabled={pending}
       >
-        <span className="drop-icon">{source ? <Video size={27} /> : <Upload size={27} />}</span>
-        <strong>{source ? basename(source) : '选择你的操作录像'}</strong>
-        <span>{source ? '视频已选择 · 点击更换' : 'MP4、MOV、MKV、WebM · 最长 10 分钟'}</span>
+        <span className="drop-icon">
+          {files.length ? <Video size={27} /> : <Upload size={27} />}
+        </span>
+        <strong>
+          {dragging
+            ? '松开以添加这些视频'
+            : files.length
+              ? '已选择 ' + files.length + ' 个视频 · 继续添加'
+              : '拖入多个视频，或点击选择'}
+        </strong>
+        <span>MP4、MOV、MKV、WebM、AVI、M4V · 总时长最多 {clock(maxDuration)}</span>
       </button>
-      <div className="path-field">
-        <Input
-          aria-label="视频文件路径"
-          placeholder="也可以粘贴本地视频的完整路径"
+      {!!files.length && (
+        <div
+          className={'import-summary ' + (invalid ? 'has-error' : '')}
+          role="status"
+          aria-live="polite"
+        >
+          <span>
+            {inspecting ? (
+              <LoaderCircle size={13} className="animate-spin" />
+            ) : invalid ? (
+              <Eye size={13} />
+            ) : (
+              <CheckCircle2 size={13} />
+            )}
+            {inspecting
+              ? '正在检查素材…'
+              : inspection?.overLimit
+                ? '总时长超出限制，请移除部分视频'
+                : inspection?.files?.some((file) => file.error)
+                  ? '部分素材需要重新选择'
+                  : files.length + ' 个视频 · 共 ' + clock(inspection?.totalDuration)}
+          </span>
+          <small>上限 {clock(maxDuration)}</small>
+        </div>
+      )}
+      {inspection?.error && (
+        <p className="import-error" role="alert">
+          {inspection.error}
+        </p>
+      )}
+      {!!files.length && (
+        <ol className="video-import-list" aria-label="待导入的视频素材">
+          {files.map((file, index) => (
+            <li key={index}>
+              <span className="video-import-number">{String(index + 1).padStart(2, '0')}</span>
+              <div className="video-import-detail">
+                <span className="video-import-name" title={file}>
+                  {basename(file)}
+                </span>
+                {(() => {
+                  const item = inspection?.files?.find(
+                    (item) => item.path === file || item.input === file,
+                  );
+                  return item?.error ? (
+                    <small className="import-error">{item.error}</small>
+                  ) : item?.info ? (
+                    <small>
+                      {clock(item.info.duration)} · {item.info.width} × {item.info.height} ·{' '}
+                      {item.info.width >= item.info.height ? '横屏' : '竖屏'}
+                    </small>
+                  ) : (
+                    <small>等待检查</small>
+                  );
+                })()}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={'上移 ' + basename(file)}
+                disabled={pending || index === 0}
+                onClick={() => move(index, -1)}
+              >
+                <ArrowUp size={13} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={'下移 ' + basename(file)}
+                disabled={pending || index === files.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <ArrowDown size={13} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={'移除 ' + basename(file)}
+                disabled={pending}
+                onClick={() => setSource(files.filter((_, i) => i !== index).join('\n'))}
+              >
+                <X size={13} />
+              </Button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <details
+        className="path-field"
+        open={pathsOpen}
+        onToggle={(event) => setPathsOpen(event.currentTarget.open)}
+      >
+        <summary>粘贴文件路径</summary>
+        <Textarea
+          aria-label="视频文件路径，每行一个"
+          placeholder="也可以粘贴本地视频完整路径，每行一个"
           value={source}
           onChange={(e) => setSource(e.target.value)}
+          disabled={pending}
+          rows={2}
         />
-      </div>
+      </details>
       <div className="import-field">
         <label htmlFor="tutorial-title">
           教程名称 <span>可选</span>
@@ -186,16 +341,21 @@ function ImportPanel({
           <span>TXT / Markdown / JSON / DOCX</span>
         </div>
       </div>
+      <BrandingPanel value={branding} setValue={setBranding} disabled={pending} collapsible />
       {!hasKey && (
         <button className="setup-notice" onClick={openSettings}>
           <Settings2 size={16} />
-          <span>先配置百炼 API Key，三个模型会共用它。</span>
+          <span>可以先导入素材，配置画面理解与改稿模型后生成脚本。</span>
           <ArrowRight size={15} />
         </button>
       )}
-      <Button className="start-button" onClick={create} disabled={!source.trim() || pending}>
-        {pending ? <LoaderCircle className="animate-spin" /> : <WandSparkles />} 导入并生成剧本{' '}
-        <ArrowRight />
+      <Button
+        className="start-button"
+        onClick={create}
+        disabled={!files.length || pending || inspecting || invalid}
+      >
+        {pending ? <LoaderCircle className="animate-spin" /> : <WandSparkles />}{' '}
+        {pending ? '正在导入素材…' : hasKey ? '生成剪辑脚本' : '先导入素材'} <ArrowRight />
       </Button>
       <div className="import-assurance">
         <ShieldCheck size={14} />
@@ -207,19 +367,20 @@ function ImportPanel({
 
 function ScenePreview({ project, scene, onExpand }) {
   const videoRef = useRef(null);
+  const source = sceneSource(project, scene);
   const seek = () => {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
     video.currentTime = frameTime(scene, project);
   };
-  useEffect(seek, [scene?.id, scene?.source_start, scene?.freeze_at, project.id]);
+  useEffect(seek, [scene?.id, scene?.source_id, scene?.source_start, scene?.freeze_at, project.id]);
   if (scene?.kind === 'title')
     return (
       <div className="scene-media title-media">
         <span className="yak-mark">YAK / TUTORIAL</span>
         <span className="title-chapter">CHAPTER {String(scene.chapter + 1).padStart(2, '0')}</span>
-        <h3>{scene.heading}</h3>
+        <h3 title={scene.heading}>{scene.heading}</h3>
         <span className="title-caption">章节标题卡 · 成片沿用 Yak 风格</span>
       </div>
     );
@@ -227,7 +388,8 @@ function ScenePreview({ project, scene, onExpand }) {
     <div className="scene-media">
       <video
         ref={videoRef}
-        src={endpoint(project, 'source')}
+        key={source.id}
+        src={sourceEndpoint(project, scene)}
         controls
         preload="metadata"
         onLoadedMetadata={seek}
@@ -248,7 +410,64 @@ function ScenePreview({ project, scene, onExpand }) {
           <Maximize2 size={14} />
         </Button>
       </Hint>
-      <span className="source-label">原片 {clock(frameTime(scene, project))}</span>
+      <span className="source-label">
+        {source.id} · {source.name} · {clock(frameTime(scene, project))}
+      </span>
+    </div>
+  );
+}
+
+function ReviewNotice({ project, chooseScene, resolveIssue, pending, dirty }) {
+  const issues = project.review?.issues || [];
+  const blocking = issues
+    .map((issue, index) => ({ ...issue, index }))
+    .filter((issue) => issue.severity === 'blocking' && issue.resolved !== true);
+  if (!issues.length) return null;
+  return (
+    <div className={'review-notice ' + (blocking.length ? 'needs-review' : '')}>
+      {blocking.length ? (
+        <>
+          <strong>
+            <ShieldCheck size={15} /> 有 {blocking.length} 处需要你核对，解决后即可制作
+          </strong>
+          {blocking.map((issue) => (
+            <div className="review-issue" key={issue.index}>
+              <p>
+                {issue.source_id && <span>{issue.source_id} · </span>}
+                {issue.message}
+              </p>
+              <div>
+                <Button variant="outline" size="sm" onClick={() => chooseScene(issue.scene)}>
+                  查看该分镜
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending || dirty || !!project.job}
+                  onClick={() => resolveIssue(issue.index)}
+                >
+                  我已核对，标记解决
+                </Button>
+              </div>
+            </div>
+          ))}
+        </>
+      ) : (
+        <details>
+          <summary>
+            <CheckCircle2 size={14} /> 画面复核完成 ·{' '}
+            {issues.filter((issue) => issue.resolved).length
+              ? '问题已核对'
+              : issues.length + ' 条提示'}
+          </summary>
+          {issues.map((issue, index) => (
+            <p key={index}>
+              {issue.resolved ? '已核对 · ' : ''}
+              {issue.message}
+            </p>
+          ))}
+        </details>
+      )}
     </div>
   );
 }
@@ -305,7 +524,7 @@ function Storyboard({
                 </>
               ) : (
                 <img
-                  src={endpoint(project, 'frame') + '?t=' + frameTime(s, project)}
+                  src={sourceEndpoint(project, s, 'frame') + '&t=' + frameTime(s, project)}
                   loading="lazy"
                   alt=""
                 />
@@ -314,6 +533,7 @@ function Storyboard({
             </div>
             <span className="film-heading">{s.heading}</span>
             <small>
+              {s.kind !== 'title' && sceneSource(project, s).id + ' · '}
               {s.kind === 'title'
                 ? '标题卡'
                 : s.kind === 'observe'
@@ -344,7 +564,7 @@ function Storyboard({
           className="scene-title-input"
           aria-label="当前分镜标题"
           value={scene.heading}
-          disabled={!!project.job}
+          disabled={!!project.job || pending}
           onChange={(e) => updateScene(selected, 'heading', e.target.value)}
         />
         <SectionLabel
@@ -359,7 +579,7 @@ function Storyboard({
         <Textarea
           aria-label="当前分镜解说词"
           value={scene.narration}
-          disabled={!!project.job}
+          disabled={!!project.job || pending}
           onChange={(e) => updateScene(selected, 'narration', e.target.value)}
           rows={3}
           placeholder="留空则保留为无声观察片段"
@@ -383,6 +603,24 @@ function Storyboard({
             <p>{scene.evidence || scene.keep_reason || '章节引导'}</p>
             {scene.uncertainty && <p className="warning-text">{scene.uncertainty}</p>}
             <div className="timing-fields">
+              {scene.kind !== 'title' && (
+                <label>
+                  视频素材（时间为片内秒数）
+                  <select
+                    className="scene-source-select"
+                    aria-label="当前分镜视频素材"
+                    value={sceneSource(project, scene).id}
+                    disabled={!!project.job || pending}
+                    onChange={(event) => updateScene(selected, 'source_id', event.target.value)}
+                  >
+                    {projectSources(project).map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.id} · {source.name} ({clock(source.info.duration)})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {(scene.source_start != null
                 ? ['source_start', 'source_end', 'hold_at']
                 : scene.freeze_at != null
@@ -401,7 +639,7 @@ function Storyboard({
                   <Input
                     type="number"
                     min="0"
-                    max={project.info.duration}
+                    max={sceneSource(project, scene).info.duration}
                     step="0.1"
                     value={scene[field] ?? ''}
                     onChange={(e) =>
@@ -411,7 +649,7 @@ function Storyboard({
                         e.target.value === '' ? null : Number(e.target.value),
                       )
                     }
-                    disabled={!!project.job}
+                    disabled={!!project.job || pending}
                   />
                 </label>
               ))}
@@ -423,7 +661,7 @@ function Storyboard({
                   max="30"
                   step="0.1"
                   value={scene.silent_tail_seconds}
-                  disabled={!!project.job}
+                  disabled={!!project.job || pending}
                   onChange={(e) =>
                     updateScene(selected, 'silent_tail_seconds', Number(e.target.value))
                   }
@@ -444,10 +682,16 @@ function VideoPanel({
   onSave,
   onReveal,
   sourceTime = 0,
+  sourceId,
   outputTime = 0,
 }) {
   const ref = useRef(null);
   const [time, setTime] = useState(0);
+  const [selectedSource, setSelectedSource] = useState(sourceId || projectSources(project)[0].id);
+  useEffect(() => {
+    setSelectedSource(sourceId || projectSources(project)[0].id);
+  }, [project.id, sourceId]);
+  const source = sceneSource(project, { source_id: selectedSource });
   const plan = project.output?.plan;
   const finishedCurrent = project.output?.revision === project.revision;
   return (
@@ -455,7 +699,7 @@ function VideoPanel({
       <div className="video-toolbar">
         <div className="segmented">
           <button className={!output ? 'active' : ''} onClick={() => setOutput(false)}>
-            原始录像 <span>{clock(project.info.duration)}</span>
+            原始录像 <span>{clock(source.info.duration)}</span>
           </button>
           <button
             className={output ? 'active' : ''}
@@ -472,18 +716,49 @@ function VideoPanel({
               project.output?.verification?.canvas?.height +
               ' · ' +
               (finishedCurrent ? '当前版本' : '历史版本')
-            : project.info.width + ' × ' + project.info.height}
+            : source.info.width + ' × ' + source.info.height}
         </span>
       </div>
+      {!output && projectSources(project).length > 1 && (
+        <label className="video-source-picker">
+          原始素材
+          <select
+            aria-label="预览视频素材"
+            value={source.id}
+            onChange={(event) => setSelectedSource(event.target.value)}
+          >
+            {projectSources(project).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.id} · {item.name} · {clock(item.info.duration)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="large-video">
         <video
-          key={output ? 'output' : 'source'}
+          key={
+            project.id +
+            (output
+              ? 'output-' + (project.output?.completedAt || project.output?.revision)
+              : source.id)
+          }
           ref={ref}
-          src={endpoint(project, output ? 'output' : 'source')}
+          src={
+            output
+              ? endpoint(project, 'output') +
+                '?v=' +
+                encodeURIComponent(project.output?.completedAt || project.output?.revision)
+              : sourceEndpoint(project, { source_id: source.id })
+          }
           controls
           preload="metadata"
           onLoadedMetadata={() => {
-            ref.current.currentTime = output ? outputTime : sourceTime;
+            ref.current.currentTime = output
+              ? outputTime
+              : source.id === sourceId
+                ? Math.min(sourceTime, source.info.duration - 0.04)
+                : 0;
           }}
           onTimeUpdate={() => setTime(ref.current?.currentTime || 0)}
         />
@@ -523,7 +798,6 @@ function VideoPanel({
             {[
               ['subtitles.srt', '字幕', 'SRT'],
               ['script.json', '剧本', 'JSON'],
-              ['cost.json', '成本记录', 'JSON'],
               ['edit-plan.json', '剪辑时间表', 'JSON'],
             ].map(([file, label, extension]) => (
               <a key={file} href={endpoint(project, 'output') + '?file=' + file} download={file}>
@@ -592,25 +866,35 @@ function JsonPanel({ value, setValue, save, disabled, pending }) {
         spellCheck={false}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        disabled={disabled}
+        disabled={disabled || pending}
       />
       <p className="json-note">保存会检查片段时间和剧本结构，并重新进入人工审核。</p>
     </div>
   );
 }
 
-export default function App() {
+export default function App({ account, refreshAccount, logout, accountPending }) {
+  const { openGuide, intent: guideIntent, consumeIntent } = useGuide();
   const [projects, setProjects] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [settings, setSettings] = useState(null);
   const [configDraft, setConfigDraft] = useState(null);
   const [view, setView] = useState('script');
-  const [source, setSource] = useState('');
-  const [title, setTitle] = useState('');
-  const [knowledge, setKnowledge] = useState('');
+  const [source, setSource] = useState(() => readLocal('tutor-import')?.source || '');
+  const [title, setTitle] = useState(() => readLocal('tutor-import')?.title || '');
+  const [knowledge, setKnowledge] = useState(() => readLocal('tutor-import')?.knowledge || '');
+  const [branding, setBranding] = useState(() =>
+    brandingDefaults(readLocal('tutor-import')?.branding),
+  );
+  const [brandingDraft, setBrandingDraft] = useState(null);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const [inspection, setInspection] = useState(null);
+  const [importDraftReady, setImportDraftReady] = useState(false);
   const [knowledgeDraft, setKnowledgeDraft] = useState('');
   const [scriptDraft, setScriptDraft] = useState(null);
   const [json, setJson] = useState('');
+  const [draftOwner, setDraftOwner] = useState(null);
+  const previousProject = useRef(null);
   const [selected, setSelected] = useState(0);
   const [draftOffer, setDraftOffer] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -618,13 +902,12 @@ export default function App() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [pending, setPending] = useState(false);
-  const [output, setOutput] = useState(true);
+  const [output, setOutput] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [connection, setConnection] = useState('连接中');
   const [loadError, setLoadError] = useState('');
   const [mobilePane, setMobilePane] = useState('preview');
   const project = projects.find((p) => p.id === activeId) || null;
-  const totals = project?.totals || EMPTY_TOTALS;
   const busy = Boolean(project?.job);
   const dirty =
     !!project?.script &&
@@ -632,11 +915,7 @@ export default function App() {
     JSON.stringify(scriptDraft) !== JSON.stringify(project.script);
   const jsonDirty = !!project?.script && json !== JSON.stringify(scriptDraft, null, 2);
   const finished = phase(project) === 3;
-  const hasKey =
-    settings &&
-    ['vision', 'editor', 'speech'].every(
-      (role) => settings.credentialStatus[settings.config.roles[role].credential],
-    );
+  const hasKey = !!account.authenticated;
   const voice = voiceName(settings?.config.speech.voice);
   const updateProject = (p) => setProjects((all) => [p, ...all.filter((item) => item.id !== p.id)]);
   const perform = async (fn) => {
@@ -660,6 +939,7 @@ export default function App() {
     localStorage.setItem('tutor-project', id);
     setView('script');
     setSelected(0);
+    setOutput(false);
     setMobilePane('preview');
   };
   useEffect(() => {
@@ -670,8 +950,18 @@ export default function App() {
         all.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
         setProjects(all);
         setSettings(value);
+        if (value.modelPolicy?.requiresConfirmation) {
+          setConfigDraft(structuredClone(value.config));
+          setSettingsOpen(true);
+        }
         const remembered = localStorage.getItem('tutor-project');
-        setActiveId(all.some((p) => p.id === remembered) ? remembered : all[0]?.id || null);
+        setActiveId(
+          remembered === 'new'
+            ? null
+            : all.some((p) => p.id === remembered)
+              ? remembered
+              : all[0]?.id || null,
+        );
       })
       .catch((error) => setLoadError(error.message));
     const events = new EventSource('/api/events');
@@ -689,13 +979,121 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    setScriptDraft(project?.script ? structuredClone(project.script) : null);
-    setJson(project?.script ? JSON.stringify(project.script, null, 2) : '');
-    setSelected(
-      Math.max(0, project?.script?.scenes.findIndex((scene) => scene.kind !== 'title') ?? 0),
+    let alive = true;
+    api('/api/drafts/import')
+      .then((draft) => {
+        if (!alive) return;
+        if (draft && !readLocal('tutor-import')) {
+          setSource(draft.source || '');
+          setTitle(draft.title || '');
+          setKnowledge(draft.knowledge || '');
+          setBranding(brandingDefaults(draft.branding));
+        }
+        setImportDraftReady(true);
+      })
+      .catch(() => {
+        if (alive) setImportDraftReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  useEffect(() => {
+    const draft =
+      source || title || knowledge || Object.values(branding).some((item) => item.enabled)
+        ? { source, title, knowledge, branding }
+        : null;
+    writeLocal('tutor-import', draft);
+    if (importDraftReady) api('/api/drafts/import', { draft }).catch(() => {});
+  }, [source, title, knowledge, branding, importDraftReady]);
+  useEffect(() => {
+    if (project || !parseVideoPaths(source).length) {
+      setInspection(null);
+      return;
+    }
+    let alive = true;
+    const controller = new AbortController();
+    setInspection((old) => ({ ...old, source, loading: true, error: null }));
+    const timer = setTimeout(() => {
+      api(
+        '/api/import/inspect',
+        { sources: parseVideoPaths(source) },
+        { signal: controller.signal },
+      )
+        .then((value) => {
+          if (alive) setInspection({ ...value, source, loading: false });
+        })
+        .catch((error) => {
+          if (alive) setInspection({ source, loading: false, error: error.message });
+        });
+    }, 200);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [source, project?.id, settings?.config.limits.maxDuration]);
+  useEffect(() => {
+    const preventFileNavigation = (event) => {
+      if (Array.from(event.dataTransfer?.types || []).includes('Files')) event.preventDefault();
+    };
+    window.addEventListener('dragover', preventFileNavigation);
+    window.addEventListener('drop', preventFileNavigation);
+    return () => {
+      window.removeEventListener('dragover', preventFileNavigation);
+      window.removeEventListener('drop', preventFileNavigation);
+    };
+  }, []);
+  useEffect(() => {
+    const draft = project?.script ? loadProjectDraft(project) : null;
+    setScriptDraft(draft?.script || (project?.script ? structuredClone(project.script) : null));
+    setJson(draft?.json ?? (project?.script ? JSON.stringify(project.script, null, 2) : ''));
+    setDraftOwner(
+      project
+        ? { id: project.id, baseHash: project.scriptHash, ready: !!draft || !project.script }
+        : null,
     );
+    if (previousProject.current !== project?.id)
+      setSelected(
+        Math.max(0, project?.script?.scenes.findIndex((scene) => scene.kind !== 'title') ?? 0),
+      );
+    previousProject.current = project?.id;
     setApproveOpen(false);
-  }, [project?.id, project?.revision]);
+    let alive = true;
+    if (project?.script && !draft) {
+      api('/api/drafts/' + project.id)
+        .then((saved) => {
+          if (!alive) return;
+          if (
+            !loadProjectDraft(project) &&
+            saved?.baseHash === project.scriptHash &&
+            Array.isArray(saved.script?.scenes)
+          ) {
+            setScriptDraft(saved.script);
+            setJson(saved.json ?? JSON.stringify(saved.script, null, 2));
+          }
+          setDraftOwner({ id: project.id, baseHash: project.scriptHash, ready: true });
+        })
+        .catch(() => {
+          if (alive) setDraftOwner({ id: project.id, baseHash: project.scriptHash, ready: true });
+        });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [project?.id, project?.scriptHash]);
+  useEffect(() => {
+    if (
+      !project?.script ||
+      draftOwner?.id !== project.id ||
+      draftOwner.baseHash !== project.scriptHash
+    )
+      return;
+    const draft =
+      dirty || jsonDirty ? { baseHash: project.scriptHash, script: scriptDraft, json } : null;
+    writeLocal('tutor-draft:' + project.id, draft);
+    if (draftOwner.ready) api('/api/drafts/' + project.id, { draft }).catch(() => {});
+  }, [project?.id, project?.scriptHash, draftOwner, scriptDraft, json, dirty, jsonDirty]);
   useEffect(() => {
     if (!project?.job) {
       setElapsed(0);
@@ -710,6 +1108,13 @@ export default function App() {
   }, [project?.status]);
   useEffect(() => {
     const keydown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (!project?.script || busy || pending) return;
+        if (jsonDirty) saveJson();
+        else if (dirty) saveScript();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         document.querySelector('textarea[aria-label="修改剧本要求"]')?.focus();
@@ -718,16 +1123,50 @@ export default function App() {
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, []);
+  }, [project?.id, busy, pending, dirty, jsonDirty, scriptDraft, json]);
+  const addVideos = (files) => {
+    if (!files.length) return;
+    const videos = files.filter((file) => /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file));
+    if (!videos.length)
+      throw new Error('没有找到视频，请选择 MP4、MOV、MKV、WebM、AVI 或 M4V 文件。');
+    const before = parseVideoPaths(source);
+    const normalizePath = (file) =>
+      window.tutorDesktop?.platform === 'win32' ? file.toLowerCase() : file;
+    const previous = new Set(before.map(normalizePath));
+    const added = new Set(videos.map(normalizePath).filter((file) => !previous.has(file))).size;
+    if (files.length > videos.length)
+      toast('已忽略 ' + (files.length - videos.length) + ' 个非视频文件');
+    else if (!added) toast('这些视频已经添加过了');
+    setSource((previous) => {
+      const unique = new Map();
+      for (const file of [...parseVideoPaths(previous), ...videos]) {
+        const key = normalizePath(file);
+        if (!unique.has(key)) unique.set(key, file);
+      }
+      return [...unique.values()].join('\n');
+    });
+  };
+  const dropVideos = (files) =>
+    perform(async () => {
+      if (!files.length) return;
+      if (!window.tutorDesktop?.getPathForFile)
+        throw new Error(
+          '浏览器无法读取本地文件完整路径，请在下方每行粘贴一个路径，或使用桌面应用拖入。',
+        );
+      const paths = files.map((file) => window.tutorDesktop.getPathForFile(file));
+      if (paths.some((file) => !file))
+        throw new Error('无法读取拖入文件，请从系统文件管理器拖入视频文件。');
+      addVideos(paths);
+    });
   const chooseVideo = () =>
     perform(async () => {
       if (!window.tutorDesktop) {
-        document.querySelector('input[aria-label="视频文件路径"]')?.focus();
+        document.querySelector('textarea[aria-label="视频文件路径，每行一个"]')?.focus();
         toast('浏览器模式可粘贴本地视频路径；桌面应用支持选择文件。');
         return;
       }
-      const file = await window.tutorDesktop.pickVideo();
-      if (file) setSource(file);
+      const files = await window.tutorDesktop.pickVideo();
+      if (files) addVideos(Array.isArray(files) ? files : [files]);
     });
   const chooseKnowledge = () =>
     perform(async () => {
@@ -743,17 +1182,32 @@ export default function App() {
     });
   const create = () =>
     perform(async () => {
-      if (!hasKey) {
-        openSettings();
-        toast('先保存模型 API Key，素材会保留在这里。');
-        return;
-      }
-      const p = await api('/api/projects', { source: source.trim(), knowledge, title });
+      const p = await api('/api/projects', {
+        sources: parseVideoPaths(source),
+        knowledge,
+        title,
+        branding,
+      });
       updateProject(p);
       selectProject(p.id);
+      setSource('');
+      setTitle('');
+      setKnowledge('');
+      setBranding(brandingDefaults());
+      if (!hasKey) {
+        toast.success('素材已保存在本机，配置模型后即可生成脚本。');
+        openSettings();
+        return;
+      }
       setView('activity');
       await api(endpoint(p, 'prepare'), {});
     });
+  const persistScript = async () => {
+    const input = jsonDirty ? parseScriptJson(json) : scriptDraft;
+    const p = await api(endpoint(project, 'script'), { script: input });
+    updateProject(p);
+    return p;
+  };
   const saveScript = () =>
     perform(async () => {
       const p = await api(endpoint(project, 'script'), { script: scriptDraft });
@@ -762,11 +1216,16 @@ export default function App() {
     });
   const saveJson = () =>
     perform(async () => {
-      const p = await api(endpoint(project, 'script'), { script: JSON.parse(json) });
+      const p = await api(endpoint(project, 'script'), { script: parseScriptJson(json) });
       updateProject(p);
       toast.success('JSON 剧本已保存。');
     });
   const updateScene = (index, field, value) => {
+    if (jsonDirty) {
+      toast('先保存 JSON 中的修改，再编辑分镜。');
+      setView('json');
+      return;
+    }
     const next = structuredClone(scriptDraft);
     next.scenes[index][field] = value;
     if (field === 'heading' && next.scenes[index].kind === 'title')
@@ -777,8 +1236,7 @@ export default function App() {
   const send = (message) =>
     perform(async () => {
       if (dirty || jsonDirty) {
-        toast('先保存右侧的修改，再让 AI 基于最新剧本改写。');
-        return;
+        await persistScript();
       }
       await api(endpoint(project, 'edit'), { message });
     });
@@ -800,18 +1258,47 @@ export default function App() {
     perform(async () => {
       if (dirty || jsonDirty || busy)
         throw new Error('请先保存当前修改，并等待正在运行的任务结束。');
-      const confirmed = await api(endpoint(project, 'approve'), { hash: project.scriptHash });
+      const confirmed = await api(endpoint(project, 'approve'), {
+        hash: project.scriptHash,
+        revision: project.revision,
+        brandingHash: project.brandingHash,
+      });
       updateProject(confirmed);
       await api(endpoint(confirmed, 'render'), {});
       setApproveOpen(false);
       setView('activity');
     });
-  const saveSettings = (config, keys) =>
+  const resolveIssue = (index) =>
     perform(async () => {
-      const value = await api('/api/settings', { config, keys });
+      const p = await api(endpoint(project, 'resolve-issue'), { index, hash: project.scriptHash });
+      updateProject(p);
+      toast.success('已标记为核对完成，仍需确认当前剧本后再制作。');
+    });
+  const retryTask = () =>
+    perform(async () => {
+      const action = project.failedTask?.action || (project.script ? 'render' : 'prepare');
+      if (dirty || jsonDirty) {
+        await persistScript();
+        if (action === 'render') {
+          setView('script');
+          return;
+        }
+      }
+      await api(
+        endpoint(project, action),
+        action === 'edit' ? { message: project.failedTask.message } : {},
+      );
+      setView('activity');
+    });
+  const saveSettings = (config) =>
+    perform(async () => {
+      const value = await api('/api/settings', {
+        config,
+        confirmModelUpdate: !!settings?.modelPolicy?.requiresConfirmation,
+      });
       setSettings(value);
       setSettingsOpen(false);
-      toast.success('三模型配置已保存。');
+      toast.success('模型配置已保存。');
     });
   const reveal = () =>
     perform(async () => {
@@ -832,6 +1319,24 @@ export default function App() {
     setKnowledgeDraft(project?.knowledge || knowledge);
     setKnowledgeOpen(true);
   };
+  const showBranding = () => {
+    setBrandingDraft({
+      id: project.id,
+      revision: project.revision,
+      value: brandingDefaults(project.branding),
+    });
+    setBrandingOpen(true);
+  };
+  const saveBranding = () =>
+    perform(async () => {
+      const p = await api(endpoint({ id: brandingDraft.id }, 'branding'), {
+        branding: brandingDraft.value,
+        revision: brandingDraft.revision,
+      });
+      updateProject(p);
+      setBrandingOpen(false);
+      toast.success('广告与水印已保存，审核后重新制作即可生效。');
+    });
   const messages = useMemo(() => {
     if (!project) return [];
     const all = (project.chat || []).map((message, i) => ({
@@ -858,12 +1363,98 @@ export default function App() {
   }, [project?.chat, busy, project?.progress.stage, finished, project?.revision]);
   const newProject = () => {
     setActiveId(null);
-    setSource('');
-    setKnowledge('');
-    setTitle('');
+    localStorage.setItem('tutor-project', 'new');
+    setOutput(false);
     setView('script');
     setMobilePane('preview');
   };
+  useEffect(() => {
+    if (!guideIntent || !settings || settings.modelPolicy?.requiresConfirmation) return;
+    consumeIntent();
+    const focus = (selector) =>
+      requestAnimationFrame(() => document.querySelector(selector)?.focus());
+    if (guideIntent.feature === 'import') {
+      newProject();
+      focus('.video-dropzone');
+    }
+    if (guideIntent.feature === 'knowledge') {
+      if (project) showKnowledge();
+      else {
+        newProject();
+        focus('#tutorial-knowledge');
+      }
+    }
+    if (guideIntent.feature === 'branding') {
+      if (project) showBranding();
+      else {
+        newProject();
+        requestAnimationFrame(() => {
+          const details = document.querySelector('.import-panel .branding-panel details');
+          if (details) {
+            details.open = true;
+            details.querySelector('summary')?.focus();
+            details.scrollIntoView({ block: 'nearest' });
+          }
+        });
+      }
+    }
+    if (guideIntent.feature === 'chat') {
+      if (project?.script) {
+        setView('script');
+        setMobilePane('chat');
+        if (guideIntent.message) offerEdit(guideIntent.message);
+        focus('textarea[aria-label="修改剧本要求"]');
+      } else if (busy) {
+        setView('activity');
+        setMobilePane('preview');
+        toast('剧本生成后即可开始改稿。');
+      } else {
+        newProject();
+        focus('.video-dropzone');
+        toast('先导入视频并生成剧本，再开始改稿。');
+      }
+    }
+    if (guideIntent.feature === 'review') {
+      setMobilePane('preview');
+      if (busy) setView('activity');
+      else if (project?.script) {
+        setView('script');
+        if (
+          !dirty &&
+          !jsonDirty &&
+          !project.review?.issues.some(
+            (issue) => issue.severity === 'blocking' && issue.resolved !== true,
+          )
+        )
+          setApproveOpen(true);
+        else toast('先保存修改并处理复核提示，再确认当前版本。');
+      } else {
+        newProject();
+        focus('.video-dropzone');
+        toast('先导入素材并生成剧本，之后再审核制作。');
+      }
+    }
+    if (guideIntent.feature === 'export') {
+      setMobilePane('preview');
+      if (project?.output) {
+        setView('video');
+        setOutput(true);
+      } else {
+        setView(project?.script ? 'script' : 'activity');
+        toast('完成制作后，即可预览和保存视频。');
+      }
+    }
+    if (guideIntent.feature === 'recovery') {
+      if (project) {
+        setView('activity');
+        setMobilePane('preview');
+      } else if (projects.length) selectProject(projects[0].id);
+      else {
+        newProject();
+        focus('.video-dropzone');
+      }
+    }
+  }, [guideIntent?.id, settings?.modelPolicy?.requiresConfirmation, !!settings]);
   const sidebar = (
     <div className="project-sidebar">
       <div className="brand">
@@ -908,6 +1499,14 @@ export default function App() {
         )}
       </div>
       <div className="sidebar-bottom">
+        <button className="sidebar-guide" onClick={() => openGuide()}>
+          <BookOpen size={15} />
+          <span>
+            功能导览<small>查看功能与具体用法</small>
+          </span>
+          <span>F1</span>
+        </button>
+        <YakcoolAccountCard {...{ account, refreshAccount, logout, accountPending }} />
         <SectionLabel>创作模型</SectionLabel>
         <ModelList config={settings?.config} openSettings={openSettings} />
         <button className="sidebar-settings" onClick={openSettings}>
@@ -925,17 +1524,40 @@ export default function App() {
     <header className="workspace-header">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="lg:hidden" aria-label="打开教程项目菜单">
+          <Button variant="ghost" size="icon" className="lg:hidden" aria-label="打开教程与账户菜单">
             <Clapperboard size={16} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent className="project-menu" align="start">
+          <DropdownMenuLabel className="project-menu-account">
+            <span title={account.user.name}>YAKCOOL · {account.user.name}</span>
+            <strong>
+              <Wallet size={13} /> 余额 {balanceText(account.balance)}
+            </strong>
+            {account.balanceStale && <small>余额刷新失败，可稍后重试</small>}
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            disabled={accountPending}
+            onSelect={(event) => {
+              event.preventDefault();
+              refreshAccount();
+            }}
+          >
+            <RefreshCw size={14} /> 刷新账户余额
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={accountPending} onSelect={logout}>
+            <LogOut size={14} /> 退出 YAKCOOL 账户
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => openGuide()}>
+            <BookOpen size={14} /> 功能导览与使用步骤
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={newProject}>
             <Plus size={14} /> 新建教程
           </DropdownMenuItem>
           {projects.map((p) => (
             <DropdownMenuItem key={p.id} onClick={() => selectProject(p.id)}>
-              <Video size={14} /> {p.title}
+              <Video size={14} /> <span className="project-menu-title">{p.title}</span>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -947,6 +1569,12 @@ export default function App() {
         <strong>{project?.title || '新教程'}</strong>
       </div>
       <div className="header-actions">
+        <Hint label="功能导览与使用步骤 · F1">
+          <Button variant="ghost" size="sm" aria-label="功能导览" onClick={() => openGuide()}>
+            <BookOpen size={15} />
+            <span className="guide-open-label">功能导览</span>
+          </Button>
+        </Hint>
         <Badge variant="outline" className={finished ? 'success-badge' : ''}>
           {finished ? (
             <CheckCircle2 size={12} />
@@ -970,7 +1598,7 @@ export default function App() {
       </span>
       <div>
         <h2>创作助手</h2>
-        <p>{settings?.config.roles.editor.model || 'Qwen Max'} · 改稿与知识纠正</p>
+        <p>{settings?.config.roles.editor.model || 'deepseek-v4.1-flash'} · 改稿与知识纠正</p>
       </div>
       <kbd>⌃ K</kbd>
     </div>
@@ -1003,7 +1631,15 @@ export default function App() {
         <div className="context-card">
           <div>
             <Video size={16} />
-            <span>{basename(project.originalSource || project.source)}</span>
+            <span
+              title={projectSources(project)
+                .map((source) => source.name)
+                .join('\n')}
+            >
+              {projectSources(project).length > 1
+                ? projectSources(project).length + ' 个视频素材'
+                : projectSources(project)[0].name}
+            </span>
             <Badge variant="secondary">{clock(project.info.duration)}</Badge>
           </div>
           <p>
@@ -1142,12 +1778,17 @@ export default function App() {
                   knowledge,
                   setKnowledge,
                   chooseVideo,
+                  dropVideos,
                   chooseKnowledge,
+                  branding,
+                  setBranding,
                   create,
                   pending,
                   hasKey,
                   openSettings,
+                  inspection,
                 }}
+                maxDuration={settings?.config.limits.maxDuration}
               />
             ) : (
               <>
@@ -1168,10 +1809,87 @@ export default function App() {
                   </div>
                   <span className="revision-label">
                     v{project.revision || '—'}
-                    {dirty || jsonDirty ? ' · 未保存' : project.script ? ' · 已保存' : ''}
+                    {dirty || jsonDirty ? ' · 本机草稿已保留' : project.script ? ' · 已保存' : ''}
                   </span>
                 </div>
                 <div className="preview-content">
+                  <div className="guide-context-help">
+                    <BookOpen size={14} />
+                    <span>
+                      {busy
+                        ? '任务进行中，可随时查看功能用法。'
+                        : finished
+                          ? '先预览成片，再保存视频、字幕和剧本。'
+                          : dirty || jsonDirty
+                            ? '修改保存在本机，保存后再审核制作。'
+                            : project.script
+                              ? '逐段核对画面和解说，再确认当前版本。'
+                              : '素材已就绪，下一步生成并核对剧本。'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openGuide(
+                          busy
+                            ? 'recovery'
+                            : finished
+                              ? 'export'
+                              : dirty || jsonDirty
+                                ? 'chat'
+                                : project.script
+                                  ? 'review'
+                                  : 'import',
+                        )
+                      }
+                    >
+                      查看这一步怎么用
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                  <div className="branding-project-bar">
+                    <span>
+                      <Clapperboard size={14} />
+                      <span>{brandingSummary(project.branding)}</span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={showBranding}
+                      disabled={busy || pending}
+                    >
+                      广告与水印 <Settings2 size={13} />
+                    </Button>
+                  </div>
+                  {project.error && !busy && (
+                    <div className="task-error" role="alert">
+                      <strong>
+                        {project.failedTask?.cancelled
+                          ? '任务已停止，可以稍后继续'
+                          : '这一步没有完成'}
+                      </strong>
+                      <p>
+                        {project.failedTask?.cancelled
+                          ? '已经完成的音频和素材分析会在重试时复用。'
+                          : project.error}
+                      </p>
+                      <Button variant="outline" size="sm" disabled={pending} onClick={retryTask}>
+                        {project.failedTask?.cancelled ? '继续任务' : '重试这一步'}
+                      </Button>
+                    </div>
+                  )}
+                  <ReviewNotice
+                    project={project}
+                    pending={pending}
+                    dirty={dirty || jsonDirty}
+                    resolveIssue={resolveIssue}
+                    chooseScene={(id) => {
+                      const index = scriptDraft?.scenes.findIndex((scene) => scene.id === id);
+                      if (index >= 0) {
+                        setSelected(index);
+                        setView('script');
+                      }
+                    }}
+                  />
                   {view === 'script' && scriptDraft && (
                     <Storyboard
                       {...{
@@ -1198,7 +1916,7 @@ export default function App() {
                       <h3>{busy ? '正在把录像整理成教程' : '素材已准备好'}</h3>
                       <p>
                         {busy
-                          ? 'Omni 读画面，Max 改写，再由 Omni 对照原片复核。完成后剧本会出现在这里。'
+                          ? 'Omni 读画面，剧本模型改写，再由 Omni 对照原片复核。完成后剧本会出现在这里。'
                           : '先生成剧本，再逐段调整解说与画面。'}
                       </p>
                       {!busy && (
@@ -1212,6 +1930,7 @@ export default function App() {
                     <VideoPanel
                       {...{ project, output, setOutput }}
                       sourceTime={frameTime(scriptDraft?.scenes[selected], project)}
+                      sourceId={sceneSource(project, scriptDraft?.scenes[selected]).id}
                       outputTime={
                         project.output?.plan.scenes.find(
                           (s) => s.id === scriptDraft?.scenes[selected]?.id,
@@ -1241,18 +1960,12 @@ export default function App() {
                           onCancel={cancel}
                         />
                       </div>
-                      <div className="usage-widget">
-                        <Usage records={project.usage} totals={totals} />
-                      </div>
                       {project.progress.streamText && (
                         <details className="stream-details">
-                          <summary>
-                            查看模型的实时输出 · 约 {project.progress.streamEstimate} Token
-                          </summary>
+                          <summary>查看模型的实时输出</summary>
                           <StreamOutput
                             text={project.progress.streamText}
                             stage={project.progress.stage}
-                            estimate={project.progress.streamEstimate}
                           />
                         </details>
                       )}
@@ -1292,21 +2005,23 @@ export default function App() {
                         {busy
                           ? project.progress.stage
                           : dirty || jsonDirty
-                            ? '保存修改后，审核当前剧本'
-                            : finished
-                              ? '教程已完成，可以预览与保存'
-                              : project.script
-                                ? '剧本已准备好，下一步由你审核'
-                                : '从剧本开始制作'}
+                            ? '修改已保留在本机，保存后即可审核'
+                            : project.review?.issues.some(
+                                  (issue) =>
+                                    issue.severity === 'blocking' && issue.resolved !== true,
+                                )
+                              ? '先核对上方提示，再审核制作'
+                              : finished
+                                ? '教程已完成，可以预览与保存'
+                                : project.script
+                                  ? '剧本已准备好，下一步由你审核'
+                                  : '从剧本开始制作'}
                       </strong>
                       <small>
                         {busy
-                          ? Math.round(project.progress.percent) +
-                            '% · 约 ' +
-                            (project.progress.streamEstimate || 0) +
-                            ' 生成 Token'
+                          ? Math.round(project.progress.percent) + '%'
                           : finished
-                            ? '字幕、剧本、时间表和成本记录均已保存'
+                            ? '字幕、剧本和剪辑时间表均已保存'
                             : project.script
                               ? '配音不重叠 · 长解说自动停顿 · 保留无声观察'
                               : '先分析画面，再纠正表达与知识问题'}
@@ -1316,6 +2031,14 @@ export default function App() {
                   {busy ? (
                     <Button variant="outline" size="sm" onClick={cancel} disabled={pending}>
                       停止任务
+                    </Button>
+                  ) : dirty || jsonDirty ? (
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={jsonDirty ? saveJson : saveScript}
+                    >
+                      <Save size={14} /> 保存修改
                     </Button>
                   ) : finished ? (
                     <Button
@@ -1335,7 +2058,9 @@ export default function App() {
                         pending ||
                         dirty ||
                         jsonDirty ||
-                        project.review?.issues.some((i) => i.severity === 'blocking')
+                        project.review?.issues.some(
+                          (i) => i.severity === 'blocking' && i.resolved !== true,
+                        )
                       }
                     >
                       <Check size={14} />
@@ -1352,36 +2077,81 @@ export default function App() {
             <span className="online-dot" />
             {connection}
           </span>
-          <span>
-            <Sparkles size={12} />
-            {compact(totals.input)} 输入 / {compact(totals.output)} 输出
-          </span>
-          <span>{totals.calls} 次调用</span>
-          <span>
-            ↑ {(totals.sent / 1048576).toFixed(2)} MB · ↓ {(totals.received / 1048576).toFixed(2)}{' '}
-            MB
-          </span>
-          <span className="statusbar-cost">
-            估算 {money(totals.cost)}
-            {totals.unpriced > 0 && ' + ' + totals.unpriced + ' 次用量未知'}
-          </span>
+          <span title={account.user.name}>YAKCOOL · {account.user.name}</span>
         </footer>
       </Shell>
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="model-dialog">
+      <Dialog
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          if (!open && settings?.modelPolicy?.requiresConfirmation) return;
+          setSettingsOpen(open);
+        }}
+      >
+        <DialogContent
+          className="model-dialog"
+          showCloseButton={!settings?.modelPolicy?.requiresConfirmation}
+          onEscapeKeyDown={(event) => {
+            const picker = event.target
+              ?.closest?.('.model-picker')
+              ?.querySelector('[role="combobox"]');
+            // Radix handles Escape at document capture, before the picker closes its list.
+            if (
+              settings?.modelPolicy?.requiresConfirmation ||
+              picker?.getAttribute('aria-expanded') === 'true'
+            )
+              event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (settings?.modelPolicy?.requiresConfirmation) event.preventDefault();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>模型与制作设置</DialogTitle>
-            <DialogDescription>先配置百炼或自定义源，再为三个模型选择源与音色。</DialogDescription>
+            <DialogTitle>
+              {settings?.modelPolicy?.requiresConfirmation ? '确认新的模型配置' : '模型与制作设置'}
+            </DialogTitle>
+            <DialogDescription>
+              YAKCOOL 已自动连接，可搜索选择剧本改写模型，画面理解与配音保持固定。
+            </DialogDescription>
           </DialogHeader>
           {configDraft && (
             <SettingsPanel
               value={configDraft}
               setValue={setConfigDraft}
-              credentials={settings.credentialStatus}
+              models={account.models}
               save={saveSettings}
               pending={pending}
+              requiredUpdate={!!settings?.modelPolicy?.requiresConfirmation}
+              logout={logout}
             />
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
+        <DialogContent className="branding-dialog">
+          <DialogHeader>
+            <DialogTitle>品牌广告与视频水印</DialogTitle>
+            <DialogDescription>
+              统一设置片头、片尾与全程水印。预览品牌呈现效果，保存后重新审核制作。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="branding-dialog-body">
+            {brandingDraft && (
+              <BrandingPanel
+                value={brandingDraft.value}
+                setValue={(value) => setBrandingDraft((draft) => ({ ...draft, value }))}
+                disabled={busy || pending}
+                project={project}
+              />
+            )}
+          </div>
+          <div className="dialog-footer">
+            <Button variant="outline" onClick={() => setBrandingOpen(false)} disabled={pending}>
+              取消
+            </Button>
+            <Button onClick={saveBranding} disabled={busy || pending}>
+              <Save size={14} /> {pending ? '正在保存…' : '保存广告与水印'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
       <Dialog open={knowledgeOpen} onOpenChange={setKnowledgeOpen}>
@@ -1431,6 +2201,22 @@ export default function App() {
             </DialogDescription>
           </DialogHeader>
           {project?.script && (
+            <div className="approval-branding">
+              <span>{brandingSummary(project.branding)}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy || pending}
+                onClick={() => {
+                  setApproveOpen(false);
+                  showBranding();
+                }}
+              >
+                调整广告与水印
+              </Button>
+            </div>
+          )}
+          {project?.script && (
             <Approval
               title={'确认第 ' + project.revision + ' 版剧本'}
               description={
@@ -1446,13 +2232,14 @@ export default function App() {
                   revision: project.revision,
                   hash: project.scriptHash,
                   voice: settings?.config.speech.voice,
+                  branding: brandingSummary(project.branding),
                   models: Object.fromEntries(
                     Object.entries(settings?.config.roles || {}).map(([name, role]) => [
                       name,
                       role.model,
                     ]),
                   ),
-                  outputs: ['视频', '字幕', '剧本', '剪辑时间表', '成本记录'],
+                  outputs: ['视频', '字幕', '剧本', '剪辑时间表'],
                 },
                 null,
                 2,
@@ -1462,7 +2249,7 @@ export default function App() {
                 busy ||
                 dirty ||
                 jsonDirty ||
-                project.review?.issues.some((i) => i.severity === 'blocking')
+                project.review?.issues.some((i) => i.severity === 'blocking' && i.resolved !== true)
               }
               onBack={() => {
                 setApproveOpen(false);
@@ -1483,6 +2270,7 @@ export default function App() {
             <VideoPanel
               {...{ project, output, setOutput }}
               sourceTime={frameTime(scriptDraft?.scenes[selected], project)}
+              sourceId={sceneSource(project, scriptDraft?.scenes[selected]).id}
               outputTime={
                 project.output?.plan.scenes.find((s) => s.id === scriptDraft?.scenes[selected]?.id)
                   ?.offset || 0

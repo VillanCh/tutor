@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const { projectSources, sourceIdentities } = require('./sources.cjs');
+const { brandingHash } = require('./branding.cjs');
 function parseJson(text) {
   const clean = String(text)
     .trim()
@@ -14,6 +16,7 @@ function parseJson(text) {
   }
 }
 function normalizeScript(input, videoDuration) {
+  const sources = Array.isArray(videoDuration) ? videoDuration : null;
   const d = structuredClone(input.script || input);
   if (typeof d.title !== 'string' || !d.title.trim()) throw Error('缺少教程标题');
   if (
@@ -27,8 +30,9 @@ function normalizeScript(input, videoDuration) {
     throw Error('场景数量无效');
   const ids = new Set();
   let chapter = -1;
-  const time = (v, label) => {
-    if (!Number.isFinite(v) || v < 0 || v > videoDuration) throw Error(label + ' 超出视频范围');
+  const time = (v, label, duration, allowEnd = true) => {
+    if (!Number.isFinite(v) || v < 0 || (allowEnd ? v > duration : v >= duration))
+      throw Error(label + ' 超出视频范围');
     return v;
   };
   d.scenes = d.scenes.map((s, i) => {
@@ -53,16 +57,27 @@ function normalizeScript(input, videoDuration) {
       (mode === 'static' && s.kind !== 'title')
     )
       throw Error('画面运动模式无效');
+    let sourceId = null,
+      duration = videoDuration;
+    if (s.kind !== 'title' && sources) {
+      sourceId = s.source_id ?? (sources.length === 1 ? sources[0].id : null);
+      const source = sources.find((item) => item.id === sourceId);
+      if (!source) throw Error('分镜必须指定有效的视频素材 source_id：' + id);
+      duration = source.info.duration;
+    }
     let start = null,
       end = null,
       freeze = null,
       hold = null;
-    if (mode === 'freeze') freeze = time(s.freeze_at, '定格时间');
+    if (mode === 'freeze') freeze = time(s.freeze_at, '定格时间', duration, false);
     if (mode === 'normal' || mode === 'compress') {
-      start = time(s.source_start, '片段开始');
-      end = time(s.source_end, '片段结束');
+      start = time(s.source_start, '片段开始', duration);
+      end = time(s.source_end, '片段结束', duration);
       if (end <= start || end - start < 0.1) throw Error('片段结束必须晚于开始');
-      hold = s.hold_at == null ? Math.max(start, end - 1 / 30) : time(s.hold_at, '讲解定格时间');
+      hold =
+        s.hold_at == null
+          ? Math.max(start, end - 1 / 30)
+          : time(s.hold_at, '讲解定格时间', duration);
       if (hold < start || hold > end) throw Error('讲解定格点必须位于本片段内');
       hold = Math.min(hold, end - 1 / 30);
     }
@@ -87,6 +102,7 @@ function normalizeScript(input, videoDuration) {
       heading: String(s.heading || d.chapters[s.chapter]),
       subtitle: String(s.subtitle || ''),
       narration,
+      ...(sources ? { source_id: sourceId } : {}),
       source_start: start,
       source_end: end,
       freeze_at: freeze,
@@ -117,7 +133,7 @@ function approve(project, expectedHash) {
   if (!project.script || project.job) throw Error('当前无法确认剧本');
   const hash = scriptHash(project.script);
   if (expectedHash !== hash) throw Error('剧本已更新，请重新阅读后确认');
-  if (project.review?.issues?.some((i) => i.severity === 'blocking'))
+  if (project.review?.issues?.some((i) => i.severity === 'blocking' && i.resolved !== true))
     throw Error('剧本有待解决的阻断问题');
   project.approval = {
     scriptHash: hash,
@@ -125,6 +141,8 @@ function approve(project, expectedHash) {
     confirmedAt: new Date().toISOString(),
     source: 'human',
     sourceHash: project.sourceHash || null,
+    sourceHashes: sourceIdentities(project),
+    brandingHash: brandingHash(project.branding),
     knowledgeHash: crypto
       .createHash('sha256')
       .update(project.knowledge || '')
@@ -140,6 +158,8 @@ function requireApproval(project) {
     project.approval.revision !== project.revision
   )
     throw Error('请先人工确认当前版本的剧本');
+  if ((project.approval.brandingHash || brandingHash()) !== brandingHash(project.branding))
+    throw Error('广告或水印已变更，请重新确认');
   if (
     project.approval.knowledgeHash !==
     crypto
@@ -149,6 +169,12 @@ function requireApproval(project) {
   )
     throw Error('知识资料已变更，请重新确认');
   if ((project.approval.sourceHash || null) !== (project.sourceHash || null))
+    throw Error('视频素材已变更，请重新确认');
+  if (
+    project.approval.sourceHashes
+      ? JSON.stringify(project.approval.sourceHashes) !== JSON.stringify(sourceIdentities(project))
+      : projectSources(project).length > 1
+  )
     throw Error('视频素材已变更，请重新确认');
 }
 function revise(project, script) {

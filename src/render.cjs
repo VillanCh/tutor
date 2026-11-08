@@ -3,10 +3,17 @@ const fs = require('node:fs/promises'),
 const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
 const { FFMPEG, run, frame, pcm, wav, probe } = require('./media.cjs');
 const { schedule } = require('./script.cjs');
+const { findSource } = require('./sources.cjs');
 const fontFiles = [
   ['C:/Windows/Fonts/msyh.ttc', 'Tutor Sans'],
   ['C:/Windows/Fonts/simsun.ttc', 'Tutor Serif'],
   ['C:/Windows/Fonts/consola.ttf', 'Tutor Mono'],
+  ['/System/Library/Fonts/PingFang.ttc', 'Tutor Sans'],
+  ['/System/Library/Fonts/Supplemental/Songti.ttc', 'Tutor Serif'],
+  ['/System/Library/Fonts/Menlo.ttc', 'Tutor Mono'],
+  ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Tutor Sans'],
+  ['/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc', 'Tutor Serif'],
+  ['/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', 'Tutor Mono'],
 ];
 for (const [file, name] of fontFiles) {
   try {
@@ -20,10 +27,13 @@ function drawText(ctx, s, x, y, size, color, family = 'Tutor Sans') {
   ctx.fillText(s, x, y);
 }
 function wrap(ctx, s, size, width, family = 'Tutor Sans') {
-  ctx.font = size + 'px "' + family + '", sans-serif';
+  ctx.font = size + 'px "' + family + '", "Noto Sans CJK SC", sans-serif';
   const lines = [];
   let current = '';
-  for (const token of s.match(/[A-Za-z0-9./:_+-]+|./gu) || []) {
+  const tokens = (s.match(/[A-Za-z0-9./:_+-]+|./gu) || []).flatMap((token) =>
+    ctx.measureText(token).width > width ? Array.from(token) : [token],
+  );
+  for (const token of tokens) {
     if (ctx.measureText(current + token).width > width && current) {
       lines.push(current);
       current = token;
@@ -31,6 +41,25 @@ function wrap(ctx, s, size, width, family = 'Tutor Sans') {
   }
   if (current) lines.push(current);
   return lines;
+}
+function captionChunks(text, width, size = 27) {
+  const ctx = createCanvas(1, 1).getContext('2d');
+  const chunks = [];
+  for (const sentence of text
+    .replace(/\s+/gu, ' ')
+    .split(/(?<=[。！？；])/u)
+    .filter((s) => s.trim())) {
+    const lines = wrap(ctx, sentence, size, width);
+    for (let i = 0; i < lines.length; i += 2) chunks.push(lines.slice(i, i + 2).join(''));
+  }
+  return chunks;
+}
+function ellipsis(ctx, text, width, size) {
+  ctx.font = size + 'px "Tutor Sans", "Noto Sans CJK SC", sans-serif';
+  if (ctx.measureText(text).width <= width) return text;
+  const chars = Array.from(text);
+  while (chars.length && ctx.measureText(chars.join('') + '…').width > width) chars.pop();
+  return chars.join('') + '…';
 }
 async function png(file, w, h, paint) {
   const c = createCanvas(w, h),
@@ -55,7 +84,19 @@ function clock(t) {
     String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(Math.floor(t) % 60).padStart(2, '0')
   );
 }
-async function render({ source, info, script, audio, config, dir, signal, progress }) {
+async function render({
+  source,
+  sources,
+  info,
+  script,
+  audio,
+  branding,
+  config,
+  dir,
+  signal,
+  progress,
+}) {
+  const project = { source, sources, info };
   const style = config.style,
     FPS = style.fps,
     W = style.width,
@@ -85,6 +126,7 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     video_height: VH,
   };
   plan.source = source;
+  if (sources) plan.sources = sources;
   plan.models = config.roles;
   plan.speech = config.speech;
   const assets = path.join(dir, 'assets'),
@@ -119,12 +161,13 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       dur = s.duration,
       mode = s.motion_mode,
       title = s.kind === 'title',
+      input = title ? null : findSource(project, s.source_id),
       overlay = path.join(assets, 'overlay-' + i + '.png'),
       hold = path.join(assets, 'hold-' + i + '.png');
     if (!title)
       await frame(
-        source,
-        mode === 'freeze' ? Math.min(s.freeze_at, info.duration - 1 / FPS) : s.hold_at,
+        input.path,
+        mode === 'freeze' ? Math.min(s.freeze_at, input.info.duration - 1 / FPS) : s.hold_at,
         hold,
         signal,
       );
@@ -163,7 +206,19 @@ async function render({ source, info, script, audio, config, dir, signal, progre
         ctx.strokeRect(15, 51, VW + 1, VH + 1);
       }
       drawText(ctx, 'YAK', 16, 10, 26, ACC, 'Tutor Mono');
-      drawText(ctx, String(s.chapter + 1).padStart(2, '0') + ' / ' + s.heading, 96, 10, 23, INK);
+      drawText(
+        ctx,
+        ellipsis(
+          ctx,
+          String(s.chapter + 1).padStart(2, '0') + ' / ' + s.heading,
+          Math.max(40, W - 96 - 405),
+          23,
+        ),
+        96,
+        10,
+        23,
+        INK,
+      );
       ctx.fillStyle = BG;
       ctx.fillRect(0, Y + 2, W, H - Y - 2);
       for (let ch = 0; ch < plan.chapters_timed.length; ch++) {
@@ -186,7 +241,7 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     s.captions = [];
     let pos = s.voice_lead;
     if (s.narration) {
-      const chunks = s.narration.split(/(?<=[。！？；])/u).filter((x) => x.trim()),
+      const chunks = captionChunks(s.narration, W - 80),
         weights = chunks.map((c) => Math.max(1, c.replace(/[A-Za-z0-9./]+/g, 'aa').length)),
         sum = weights.reduce((a, b) => a + b, 0);
       for (let j = 0; j < chunks.length; j++) {
@@ -262,7 +317,7 @@ async function render({ source, info, script, audio, config, dir, signal, progre
         '-t',
         String(srcdur),
         '-i',
-        source,
+        input.path,
         '-loop',
         '1',
         '-framerate',
@@ -539,8 +594,17 @@ async function render({ source, info, script, audio, config, dir, signal, progre
       onProgress: (r) => progress?.(0.8 + r * 0.15, '合成完整视频'),
     },
   );
-  await fs.writeFile(path.join(dir, 'edit-plan.json'), JSON.stringify(plan, null, 2));
-  progress?.(0.96, '验证音画与配音间隔');
+  const brandingCheck = await require('./branding.cjs').applyBranding({
+    branding,
+    plan,
+    output,
+    dir,
+    fps: FPS,
+    background: BG,
+    signal,
+    progress: (r, stage) => progress?.(0.95 + r * 0.025, stage),
+  });
+  progress?.(0.98, '验证音画与配音间隔');
   await run(FFMPEG, ['-hide_banner', '-v', 'error', '-i', output, '-f', 'null', '-'], { signal });
   const actual = await pcm(output, signal, 24000),
     spoken = plan.scenes.filter((s) => s.voice_duration),
@@ -565,32 +629,34 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     const s = plan.scenes[i],
       local = Math.min(1.5, s.duration / 2),
       samples = [];
-    for (const [file, t] of [
+    for (const [sampleIndex, [file, t]] of [
       [path.join(segments, 'segment-' + i + '.mp4'), local],
       [output, s.offset + local],
-    ]) {
-      const r = await run(
-        FFMPEG,
-        [
-          '-hide_banner',
-          '-v',
-          'error',
-          '-ss',
-          String(t),
+    ].entries()) {
+      const crop = 'crop=' + Math.min(W - 220, 900) + ':40:16:4';
+      const sampleArgs = [
+        '-hide_banner',
+        '-v',
+        'error',
+        '-filter_complex_threads',
+        '1',
+        '-ss',
+        String(t),
+        '-i',
+        file,
+      ];
+      if (sampleIndex === 0 && brandingCheck?.watermark)
+        sampleArgs.push(
           '-i',
-          file,
-          '-frames:v',
-          '1',
-          '-vf',
-          'crop=' + Math.min(W - 220, 900) + ':40:16:4',
-          '-f',
-          'rawvideo',
-          '-pix_fmt',
-          'rgb24',
-          '-',
-        ],
-        { signal },
-      );
+          path.join(assets, 'watermark.png'),
+          '-filter_complex',
+          '[0:v][1:v]overlay=0:0,' + crop + '[check]',
+          '-map',
+          '[check]',
+        );
+      else sampleArgs.push('-vf', crop);
+      sampleArgs.push('-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-');
+      const r = await run(FFMPEG, sampleArgs, { signal });
       samples.push(r.stdout);
     }
     if (samples[0].length !== samples[1].length) throw Error('场景画面验证失败：' + s.id);
@@ -601,6 +667,7 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     if (mae > 4) throw Error('成片章节位置不匹配：' + s.id);
     headers.push({ scene: s.id, mae });
   }
+  await fs.writeFile(path.join(dir, 'edit-plan.json'), JSON.stringify(plan, null, 2));
   const result = {
     passed: true,
     duration: (await probe(output, signal)).duration,
@@ -609,9 +676,10 @@ async function render({ source, info, script, audio, config, dir, signal, progre
     voiceCount: spoken.length,
     decodedSpeechGaps: gaps,
     sceneHeaderChecks: headers,
+    ...(brandingCheck ? { branding: brandingCheck } : {}),
   };
   await fs.writeFile(path.join(dir, 'verification.json'), JSON.stringify(result, null, 2));
   progress?.(1, '视频已完成');
   return { plan, verification: result, output };
 }
-module.exports = { render, stamp };
+module.exports = { render, stamp, captionChunks };

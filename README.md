@@ -1,125 +1,108 @@
 # Tutor
 
-[官网与免费下载](https://villanch.github.io/tutor/) · [正式发行包](https://github.com/VillanCh/tutor/releases/latest)
-
-Tutor 软件免费。使用 AI 功能，需要先前往 [yakcool.com](https://yakcool.com) 充值并获取自己的 API KEY，再在应用的「模型与制作设置」中配置对应模型源；AI 服务按实际用量计费。
-
-用录屏和知识资料制作教学视频的 Electron 工作台。全部业务代码、图片排版、音频调度与视频流程均为 JavaScript；媒体编解码使用随 npm 安装的 FFmpeg。
-
-默认流程：
-
-1. Qwen3.8 Omni Flash 读取视频并生成结构化初稿。
-2. Qwen3.8 Max 根据初稿与知识资料修订错误、概念和表达。
-3. Omni 再对照视频校对修订稿。
-4. 人工检查分镜或 JSON，确认当前版本。
-5. Qwen Audio 3.1 TTS Flash 使用龙安朗配音。
-6. 按真实音频长度安排定格、原速操作与无声观察，渲染 Yak 风格视频。
-
-任何剧本或知识修改都会撤销旧确认。后端验证当前剧本哈希与版本，不允许绕过确认直接渲染。
+用一个或多个录屏和知识资料制作教学视频的跨平台 Electron 工作台。登录 YAKCOOL 后自动连接模型服务，先共同完善剪辑脚本，再由你确认配音和制作。
 
 ## 启动
 
-需要 Node.js 22.12 或以上。首次安装会下载 Electron、FFmpeg 和 FFprobe。React 工作台使用真实的 ReactBits Pro App UI，界面构建需要你自己的 Pro 授权。
+开发环境需要 Node.js 22.12 或以上。依赖会安装 Electron、FFmpeg、FFprobe 和原生 Canvas 模块。
 
     npm install
-    # 在 .env.local 填写 REACTBITS_LICENSE_KEY，密钥不要提交到 Git
+    # 开发界面需要自己的 ReactBits Pro 授权，在 .env.local 配置 REACTBITS_LICENSE_KEY
     npm run setup-ui
     npm start
 
-Windows 安装依赖和组件后也可以双击 start.cmd 启动。它会使用 Electron 自带的 Node 运行时构建界面，不依赖系统中旧版本的 Node，也不需要重新输入已保存的模型 Key。
+Windows 已安装依赖和界面组件后，可双击 `start.cmd`。它使用 Electron 自带的 Node 构建界面，适用于系统 Node 版本较旧的机器。发行包不需要安装 Node、FFmpeg 或开发界面授权。
 
-ReactBits Pro 的源码、Agent Kit、授权密钥与构建产物按许可证仅保存在本地，公开仓库包含 Tutor 的业务代码和组件安装、适配脚本。npm run setup-ui 从官方授权注册表获取源码，再生成与 Tutor API 连接的组件；没有复制付费源码到仓库。仅使用 CLI 制作视频不需要 ReactBits 授权。
+## YAKCOOL 登录与余额
 
-采用 App Shell 9、AI Chat 2、Wizard 1、Agent Approval 1、Agent Activity 1 和 AI Usage 1，并应用 Agent Kit Terminal Dark 的颜色、层次、字体与动效规则。组件保持独立滚动区域；对话、审核和费用数据来自真实后端。标准表单、对话框和提示使用 shadcn/ui。所有前端源文件也是 JavaScript / JSX。
+必须登录 YAKCOOL 公开用户账户后才能进入工作台。点击“登录 YAKCOOL”，在独立窗口中的 `https://yakcool.com/login` 官方页面阅读并确认用户协议，然后微信扫码，验证成功后自动进入 Tutor。没有用户名/密码输入框，也不接受手动模型 Key、环境变量 Key 或员工后台会话。
 
-桌面工作台的“模型与制作设置”提供百炼源和自定义源。每个源配置 Chat 地址、语音协议、语音地址与 Key，三个角色分别选择源并继承连接设置；模型名称和参考价格独立配置。旧版的接口与独立凭据自动迁移，音频缓存继续复用。公开代码默认使用百炼通用地址，不包含个人业务空间地址或任何预置密钥。首次启动可用 QWEN_BASE_ORIGIN 指定业务空间域名，本机已保存的设置优先。各源的 Key 使用 Electron safeStorage 加密保存在本机用户数据目录，不进入仓库，也不会返回到页面。
+登录流程参考 [yaklang/yconnect](https://github.com/yaklang/yconnect)。后台验证公开用户会话，获取账户可用服务凭据和余额；已有有效凭据时直接使用，没有时自动为 Tutor 申请一个。凭据只在后台内存中使用，不返回工作台页面，不提供查看、复制、下载或导出接口。
 
-API Key 也可用 QWEN_API_KEY 环境变量传入。设置 TUTOR_DATA_DIR 可修改项目数据位置。桌面模式会保留加密凭据；CLI 模式只使用本次进程的环境变量，不写入明文密钥。
+会话 Cookie 由 Electron safeStorage 使用系统安全存储加密保存；重新打开应用时会验证会话并重新获取凭据。会话失效后要求重新登录，网络暂时不可用时可重试。Linux 需要可用的系统密钥环，不降级到明文保存。旧版手动保存的 Key 不再加载。
 
-## 工作台
+左下角显示 YAKCOOL 账户名与当前余额，可手动刷新，也会定期更新。余额来自账户服务，未知时显示“—”；更新失败会标注。界面不显示本次调用 Token、当前消耗、估算费用或消费面板，也不提供成本记录下载。退出登录后立即清除本地登录会话和内存凭据，停止当前任务并返回登录页。
 
-顶栏：导入素材 → 对话改稿 → 审核制作 → 导出成片，当前阶段和下一步操作都明确显示。桌面窗口采用沉浸式深色标题栏，应用顶栏可拖动，保留系统的最小化、最大化、关闭与窗口吸附。
+登录窗口使用独立临时浏览器会话，无 Node 和工作台 preload 权限，只允许官方 YAKCOOL、Yaklang 和微信登录域名；该窗口禁止下载和读取账户 Key 列表。主工作台的项目、设置、事件流和媒体接口也会在后端检查登录状态，不能用手动 Key 绕过。
 
-左侧：AI 对话与修改建议。模型中间输出显示在独立 JSON 代码框中，完整内容可滚动、选择与复制，显示当前阶段及 Token 估计；最终说明仍以正文显示。点选右侧分镜后，“让 AI 改这一段”将段落名称放入对话框；Enter 发送，Shift + Enter 换行，Ctrl + K 聚焦输入。
+## 制作流程
 
-右侧：导入视频与知识、分镜时间轴、解说编辑、对应原片时间点、大画面原始与成品预览、格式化 JSON Dump 和制作记录。
+首次启动会先显示 Bento 功能导览，按素材导入、对话改稿、知识补充、人工审核、品牌水印、成片导出和草稿恢复列出具体用途。每张卡片都能查看操作步骤与使用示例，并直接定位到工作台中的对应功能。
 
-底栏和制作记录：接口实际输入输出 Token、当前生成 Token 估计、调用次数、请求与响应载荷流量和估算费用。未知的计费用量保持未知，不记为零成本。
+工作台右上角、左侧栏、紧凑窗口菜单和登录页都保留导览入口，也可按 F1 随时打开。导览关闭后保留原有编辑内容与任务进度；首次查看状态保存在本机，重新启动本地服务或端口变化后仍会记住。实际使用时，预览区按当前阶段提供说明和对应的步骤指南。导览中的改稿示例可放入对话草稿，再由用户主动发送。
 
-审核对话框：确认当前版本后才进行配音和制作。未保存的编辑不能用于制作，AI 不能代替人工确认。
+1. 拖入或多选一个或多个原始视频，补充可选的教学目标、术语或知识文件。
+2. Omni 逐个分析视频，剧本模型汇总全部素材编排一份剪辑脚本，Omni 再分别对照各原片校对。
+3. 在分镜或 JSON 中修改脚本，或直接通过对话提出修改要求。
+4. 查看复核提示，人工确认当前版本后，生成旁白、字幕与成片。
+5. 预览视频、保存 MP4，或下载字幕、脚本及剪辑时间表。
 
-## 配音与风格
+默认模型为 `qwen3.8-omni-flash`、`deepseek-v4.1-flash` 和 `qwen-audio-3.1-tts-flash`。升级时旧配置自动迁移，登录后必须确认一次新的模型配置，确认前后端也会拦截模型任务。确认记录保存在本机，后续启动保留你选择的剧本模型。
 
-- 模型：qwen-audio-3.1-tts-flash。
-- 界面“沉稳男声”：龙安朗，longanlang_v3.1，默认使用。
-- 界面“解说女声”：许言初，xuyanchu_v3.1。
-- 48 kHz WAV，中性普通话教程指令，默认语速 1.0。
-- Yak 米白底、墨色文字、橙色和陶土色点缀、衬线章节标题、大录屏区域、底部字幕和章节时间轴。
+`qwen3.8-max` 已在配置保存和实际请求层禁用，不能通过旧配置、大小写变化或手动请求继续使用。画面理解和配音模型固定；剧本改写提供账户模型目录的搜索与自动补全，可用方向键和 Enter 选定，不接受未选定的自由输入。连接地址和凭据仍由后台管理。
 
-支持 1 到 5 个章节，输入视频最长 10 分钟。画面等比缩放，输出画布随素材纵横比调整。知识文件支持 TXT、MD、JSON、DOCX。字幕按句呈现，句内时序根据旁白长度分配，不是逐字强制对齐。
+DeepSeek 使用官方 [非思考模式参数](https://api-docs.deepseek.com/guides/thinking_mode/)；切换不同模型时按其协议发送参数。账户服务需要支持所选模型及对应的视频或语音能力。
 
-## 自定义接口与 AI Balance
+Chat 使用 YAKCOOL 返回的受信任 Yaklang HTTPS 网关的 `/v1/chat/completions`；Qwen 配音使用同一网关的 `/api/v1/services/audio/tts/SpeechSynthesizer`。工作台不能把账户凭据改发到自定义地址。
 
-在设置中点“添加自定义源”，填写源名称（例如 AI Balance）、实际地址和 Key，再将需要的模型切换到此源：
+## 素材与剪辑
 
-- 视觉与改写模型：OpenAI Chat 协议，地址填到 /v1 或 compatible-mode/v1，程序追加 /chat/completions。
-- 百炼原生 TTS：地址填完整 SpeechSynthesizer 端点。
-- OpenAI Speech TTS：地址填到 /v1，程序追加 /audio/speech。
+支持 MP4、MOV、MKV、WebM、AVI、M4V，可继续追加、去重、排序、移除。导入前检查每段视频的时长、尺寸和可读性，并显示总时长；损坏文件及超长素材会直接提示。混入非视频文件时保留有效视频。桌面版默认收起路径输入，浏览器模式可每行粘贴一个本地完整路径；扫码登录需使用桌面版。
 
-Chat 和语音不是同一个协议：Omni 与 Max 请求 /chat/completions；默认 Qwen TTS 请求百炼 SpeechSynthesizer。网关必须实际支持所选模型和视频输入或语音输出。声线名称以对应服务商支持的值为准。本项目没有硬编码或声称已验证未知 AI Balance 端点。
+每个素材有独立的 `v01`、`v02` 等编号。非标题分镜用 `source_id` 指定原片；`source_start`、`source_end`、`hold_at`、`freeze_at` 都是该原片内从 0 开始的秒数。预览、缩略图和切割使用相同编号。“时序与画面依据”中可调整素材和时间；例如可要求“先用 v02 展示结果，再用 v01 讲操作，删掉重复步骤”。
 
-高级 JSON 中 sources 是连接设置的来源，roles 使用 sourceId 选择源，baseUrl、protocol、credential 会据此解析。新增源可暂时留空，选中的源必须有对应接口地址。输入完整的 /chat/completions 或 /audio/speech 地址也会在保存时自动规范化。
+支持 1–5 个章节，素材总时长默认最多 10 分钟。后端 `limits.maxDuration` 可配置到 3600 秒。输出画布按首个素材的显示方向设置，其余素材等比缩放并补边，支持横竖屏混合及手机视频旋转信息。知识文件支持 TXT、MD、JSON、DOCX。
 
-## CLI
+模型分析每次只发送一段压缩视频，联合编排使用全部分析结果，视觉校对逐段完成。导入会独立复制所有原片并记录 SHA256，同名文件不会覆盖，原文件后续变化不会影响已导入副本。
 
-    node src/cli.cjs prepare --video recording.mp4 --knowledge facts.txt --data ./projects
+## 片头、片尾与全程水印
 
-输出项目 ID、剧本位置和当前哈希。人工阅读后：
+导入素材时，展开“片头、片尾与水印广告（可选）”，分别开启需要的项目。已有教程可点击预览区的“广告与水印”调整设置，保存后重新审核并制作。
 
-    node src/cli.cjs approve --project UUID --hash CURRENT_HASH --data ./projects
-    node src/cli.cjs render --project UUID --data ./projects
+- **片头 / 片尾广告**：选择视频或图片，自动按“片头 → 教程正文 → 片尾”拼接。视频支持 MP4、MOV、MKV、WebM、AVI、M4V，单段最长 120 秒，按完整时长播放，可选择保留原声；图片支持 PNG、JPG、WebP，最大 20 MB，可设置 1–60 秒的静音展示时长。素材等比缩放并补边。
+- **全程水印**：填写品牌名、课程标识或网址（最多 120 字），也可选择透明 PNG Logo。支持“全屏平铺”和“四角标识”，覆盖片头、正文及片尾。默认使用 8% 不透明度、14% 宽度、疏朗排列的轻盈水印；缩小标识时保持间距，避免水印反而更密。也可选择标准 12%、醒目 20% 预设，调整 -60°–60° 角度、三档密度、大小与 5%–100% 不透明度。文字可选深墨、纯白、柔和灰；默认保护底部字幕带，也可关闭保护实现完整画布覆盖。已有设置保留原有数值。
+- **预览与对比**：右侧使用当前素材静帧预览，可在原始画面和水印效果之间切换。未导入时展示示例教学画面；文字和 Logo 都与实际导出使用同一套水印渲染与排版。预览不调用模型、不生成配音，也不修改项目版本。
+- 例如：选择一段 5 秒品牌视频作片头，一张 8 秒关注引导图作片尾，在右上角添加“YAKCOOL · yakcool.com”文字水印。
 
-可单独启动浏览器工作台：
+广告文件会独立复制到项目目录，不参与 AI 剪辑和配音。添加片头后，字幕、旁白时间和章节位置会同步后移。广告或水印设置变更会撤销旧确认，并生成新的输出版本；已有成片仍可作为历史版本预览和保存。审核窗口会列出本次启用的广告和水印。
 
-    npm run build
-    node src/cli.cjs studio --data ./projects
+## 改稿、核对与恢复
 
-不要让多个进程同时写同一项目数据目录。
+导入内容和未提交的分镜/JSON 草稿保存在本机，切换教程、刷新或重新启动本地服务后可恢复。草稿不会自动覆盖已确认脚本；点击保存或按 Ctrl/Cmd + S 才提交为新版本。向 AI 改稿时会先提交当前有效修改。Ctrl/Cmd + K 聚焦对话，Enter 发送，Shift + Enter 换行。
 
-## 导出文件
+阻断问题直接显示在预览区，可定位到对应分镜。人工核对后点击“我已核对，标记解决”，再确认当前脚本进行制作；AI 返回的“已解决”字段不会替代人工核对。任何脚本或知识修改都会撤销旧确认，后端验证脚本哈希、版本和完整素材清单。
 
-每个确认版本使用独立输出目录，保留 tutorial.mp4、subtitles.srt、script.json、edit-plan.json、cost.json、verification.json、approval.json、config.json 和 narration.wav。逐段 WAV 按内容与模型参数缓存，取消后可重试，复用缓存不会重复调用 TTS。
+任务失败或取消后，可直接重试当前步骤。已完成的分析视频和按文本、模型及音色缓存的旁白会复用。长解说会在指定画面定格，再继续实际操作；旁白间保留静音间隔，互不重叠。字幕最多两行一屏，长句继续拆分并完整保留文字，句内时序按音频长度分配。
 
-项目保存初稿、Max 修订、视觉校对和人工编辑历史。导入时会复制源视频并记录 SHA256，确认后修改素材或知识将无法直接复用确认。源视频、生成文件、知识及密钥均保存在用户目录，Git 忽略项目数据与媒体。桌面应用会记住上一次的工作目录。
+默认使用龙安朗 `longanlang_v3.1`，可切换许言初 `xuyanchu_v3.1`；48 kHz WAV、中性普通话教程语气。成片沿用 Yak 米白底、墨色文字、橙色点缀、章节标题卡和底部字幕/时间轴。
 
-## Windows 发行包
+## 文件与平台
 
-GitHub Releases 提供 Windows 10/11 x64 安装程序与免安装 ZIP。下载发行包不需要 Node.js、FFmpeg 或 ReactBits 授权；首次打开在设置中填写自己的模型 API Key。当前版本未做代码签名。
+每个确认版本保存在独立输出目录，包含 MP4、SRT、脚本、剪辑时间表、验证结果和音频等制作文件。`edit-plan.json` 保留素材编号和片内时间便于追溯。应用不提供 Key 或成本文件下载。项目、知识、媒体与会话均保存在本机用户目录，不进入 Git；`TUTOR_DATA_DIR` 可更改项目目录，桌面应用会记住上次的位置。
 
-在有 ReactBits Pro 授权且已安装组件的 Windows x64 开发环境中：
+Windows 媒体工具使用 `.exe`，macOS/Linux 使用无后缀程序。各平台应在对应操作系统和目标架构安装依赖后构建，不能直接复用 Windows 的 `node_modules`；Linux 建议安装 Noto CJK 字体。当前工作站实际验证为 Windows，其他平台路径有模拟测试。
 
-    npm run release:win
+原有直接传 Key 的命令行制作模式已关闭；请在桌面版登录后完成制作，避免绕过账户流程。不要让多个进程同时写同一项目目录。
 
-生成 release/Tutor-VERSION-windows-x64-setup.exe、portable.zip 和 SHA256SUMS.txt。打包只携带编译后的应用界面、业务代码、运行时依赖和媒体工具；不携带组件 JSX、Agent Kit、密钥、个人设置或素材。FFmpeg/FFprobe 放在 resources/tools，原生 Canvas 模块解包到 app.asar.unpacked。许可证与媒体来源在 resources/licenses。
-
-发行包可独立检查原生模块、真实视频合成与解码、静音间隔、文档模块和界面资源；不调用计费模型：
-
-    Tutor.exe --smoke-test C:/Temp/tutor-release-check.json
-
-## 验证
+## 验证与打包
 
     npm run check
     npm run build
     npm test
+    npm run test:desktop
+    npm run test:ui
+    npm run test:branding
 
-测试覆盖模型源迁移、路由及 Key 继承、音频缓存兼容、时间范围、人工确认与撤销、缓存 Token 计费、长解说的静音间隔，以及真实 FFmpeg 的等比画面合成与解码。
+测试包含登录权限、会话过期、余额未知与刷新、退出竞态、凭据不外泄、固定网关、禁止 Key/成本下载，以及多素材脚本、草稿恢复、人工核对、失败重试、真实 FFmpeg 剪辑、字幕完整性和音画验证。桌面回归使用隔离账户/模型响应，实际视频编码及 Chromium 播放不作模拟。截图与报告位于 `build/generated/multi-video-smoke`。
 
-参考：
+`test:ui` 在真实 Chromium 中巡检各页面和弹窗，覆盖长文本、详情展开、窄窗口及 125% / 150% 缩放，检查内容边界和操作可达性。截图与报告位于 `build/generated/ui-layout`。紧凑窗口下可从顶部教程与账户菜单查看余额、刷新及退出。
 
-- [百炼音色目录](https://platform.qianwenai.com/docs/developer-guides/speech/voice-list/qwen-audio-tts)
-- [百炼 TTS HTTP API](https://help.aliyun.com/zh/model-studio/qwen-audio-tts-http-api)
-- [模型价格](https://help.aliyun.com/zh/model-studio/model-pricing)
-- [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
-- [ReactBits Pro App UI](https://pro.reactbits.dev/docs/app-ui)
-- [ReactBits Pro Agent Kit](https://pro.reactbits.dev/docs/agent-kit)
-- [ReactBits Pro 许可证](https://pro.reactbits.dev/license)
+`test:branding` 生成包含品牌片头、教学正文、片尾及 8% 不透明度全屏水印的完整演示，并验证首次功能导览、实时预览对比、人工确认、实际编码和 Chromium 播放，不调用模型。功能导览、具体用法、设置、工作台及分段截图和演示 MP4 位于 `build/generated/branding-showcase`。
+
+可单独验证真实官方登录入口加载（不会代为确认用户协议、登录账户或调用模型）：
+
+    electron test/electron-yakcool-login.cjs
+
+Windows 开发机安装有授权的界面组件后运行 `npm run release:win`，生成安装程序和免安装 ZIP。打包只携带编译后的界面、业务代码、运行时依赖和对应平台媒体工具，不携带密钥、会话、用户媒体或付费组件源码。
+
+ReactBits Pro 源码、Agent Kit 和开发授权仅保存在授权开发者本机，公开仓库提供业务代码与组件安装、适配脚本。参考 [ReactBits Pro 许可证](https://pro.reactbits.dev/license)、[Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage) 和 [Y CONNECT 登录实现](https://github.com/yaklang/yconnect/blob/main/darwin/Sources/YConnect/WebLogin.swift)。

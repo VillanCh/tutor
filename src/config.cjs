@@ -1,4 +1,5 @@
 const { resolveSources } = require('./model-sources.mjs');
+const { MODEL_DEFAULTS, assertModelAllowed } = require('./model-policy.mjs');
 const HOST = process.env.QWEN_BASE_ORIGIN || 'https://dashscope.aliyuncs.com';
 const instruction =
   '请用普通话，以产品教程说明的方式朗读。保持情绪中性、语调平直、字音清晰、中等语速。减少音高起伏和夸张重音，句间自然停顿，避免广告腔、讲故事腔、撒娇、热情和煽情。只朗读输入文本。';
@@ -6,7 +7,7 @@ const DEFAULTS = {
   provider: 'bailian',
   roles: {
     vision: {
-      model: 'qwen3.8-omni-flash',
+      model: MODEL_DEFAULTS.vision,
       protocol: 'openai-chat',
       baseUrl: HOST + '/compatible-mode/v1',
       credential: 'default',
@@ -15,7 +16,7 @@ const DEFAULTS = {
       cachedPrice: 0.1,
     },
     editor: {
-      model: 'qwen3.8-max',
+      model: MODEL_DEFAULTS.editor,
       protocol: 'openai-chat',
       baseUrl: HOST + '/compatible-mode/v1',
       credential: 'default',
@@ -24,7 +25,7 @@ const DEFAULTS = {
       cachedPrice: 1.5,
     },
     speech: {
-      model: 'qwen-audio-3.1-tts-flash',
+      model: MODEL_DEFAULTS.speech,
       protocol: 'dashscope-tts',
       baseUrl: HOST + '/api/v1/services/audio/tts/SpeechSynthesizer',
       credential: 'default',
@@ -60,6 +61,7 @@ const DEFAULTS = {
 function validateConfig(value) {
   for (const name of ['vision', 'editor', 'speech']) {
     if (!value?.roles?.[name]?.model) throw Error('模型配置不完整：' + name);
+    assertModelAllowed(value.roles[name].model);
   }
   const c = resolveSources(value, true);
   for (const name of ['vision', 'editor', 'speech']) {

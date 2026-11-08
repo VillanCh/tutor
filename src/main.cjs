@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell, Menu } = requir
 const fs = require('node:fs/promises'),
   path = require('node:path'),
   { startServer } = require('./server.cjs');
+const { YakcoolAccount } = require('./yakcool.cjs');
+const { createLoginLauncher } = require('./yakcool-login.cjs');
 let studio, window;
 app.setName('Tutor');
 if (process.platform === 'win32') app.setAppUserModelId('com.yaklang.tutor');
@@ -29,28 +31,46 @@ app
     } catch {}
     const root =
         process.env.TUTOR_DATA_DIR || savedRoot || path.join(app.getPath('userData'), 'workspaces'),
-      credentialsFile = path.join(app.getPath('userData'), 'credentials.bin');
-    const credentialIO = {
+      sessionFile = path.join(app.getPath('userData'), 'yakcool-session.bin');
+    let sessionWrites = Promise.resolve();
+    const sessionIO = {
       async load() {
         try {
-          return JSON.parse(safeStorage.decryptString(await fs.readFile(credentialsFile)));
+          return JSON.parse(safeStorage.decryptString(await fs.readFile(sessionFile)));
         } catch {
           return {};
         }
       },
-      async save(keys) {
-        if (!safeStorage.isEncryptionAvailable())
-          throw Error('系统加密存储不可用，Key 仅支持当前会话环境变量');
-        await fs.mkdir(path.dirname(credentialsFile), { recursive: true });
-        await fs.writeFile(credentialsFile, safeStorage.encryptString(JSON.stringify(keys)));
+      save(cookie) {
+        sessionWrites = sessionWrites
+          .catch(() => {})
+          .then(async () => {
+            if (
+              !safeStorage.isEncryptionAvailable() ||
+              (process.platform === 'linux' &&
+                safeStorage.getSelectedStorageBackend() === 'basic_text')
+            )
+              throw Error('系统安全存储不可用，请启用系统钥匙串后重新登录');
+            await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+            await fs.writeFile(
+              sessionFile + '.tmp',
+              safeStorage.encryptString(JSON.stringify(cookie)),
+            );
+            await fs.rename(sessionFile + '.tmp', sessionFile);
+          });
+        return sessionWrites;
+      },
+      clear() {
+        sessionWrites = sessionWrites
+          .catch(() => {})
+          .then(() => fs.rm(sessionFile, { force: true }));
+        return sessionWrites;
       },
     };
-    studio = await startServer({ dataDir: root, credentialIO });
+    const account = new YakcoolAccount({ sessionIO });
+    studio = await startServer({ dataDir: root, account });
     await fs.mkdir(app.getPath('userData'), { recursive: true });
     await fs.writeFile(homeFile, JSON.stringify({ dataDir: root }));
-    if (process.env.QWEN_API_KEY)
-      await studio.store.settings(studio.store.config, { default: process.env.QWEN_API_KEY });
-    delete process.env.QWEN_API_KEY;
     Menu.setApplicationMenu(null);
     window = new BrowserWindow({
       show: false,
@@ -80,16 +100,43 @@ app
     const local = (event) => {
       if (!event.senderFrame.url.startsWith(studio.url + '/')) throw Error('无效调用来源');
     };
+    const login = createLoginLauncher(account, window);
+    ipcMain.handle('yakcool-login', async (event) => {
+      local(event);
+      login().catch(() => account.cancelLogin('无法加载 YAKCOOL 登录页面，请检查网络后重试。'));
+      return { opened: true };
+    });
     ipcMain.handle('pick-video', async (event) => {
       local(event);
+      await account.requireLogin();
       const r = await dialog.showOpenDialog(window, {
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: '视频', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }],
+      });
+      return r.canceled ? null : r.filePaths;
+    });
+    ipcMain.handle('pick-branding', async (event, kind) => {
+      local(event);
+      await account.requireLogin();
+      if (!['intro', 'outro', 'watermark'].includes(kind)) throw Error('素材类型无效');
+      const r = await dialog.showOpenDialog(window, {
+        title: { intro: '选择片头广告', outro: '选择片尾广告', watermark: '选择水印 Logo' }[kind],
         properties: ['openFile'],
-        filters: [{ name: '视频', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi'] }],
+        filters: [
+          {
+            name: kind === 'watermark' ? 'Logo 图片' : '广告视频或图片',
+            extensions:
+              kind === 'watermark'
+                ? ['png', 'jpg', 'jpeg', 'webp']
+                : ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp'],
+          },
+        ],
       });
       return r.canceled ? null : r.filePaths[0];
     });
     ipcMain.handle('pick-knowledge', async (event) => {
       local(event);
+      await account.requireLogin();
       const r = await dialog.showOpenDialog(window, {
         properties: ['openFile', 'multiSelections'],
         filters: [{ name: '知识资料', extensions: ['txt', 'md', 'json', 'docx'] }],
@@ -110,12 +157,14 @@ app
     });
     ipcMain.handle('reveal-output', async (event, id) => {
       local(event);
+      await account.requireLogin();
       const p = studio.store.get(id);
       await shell.openPath(p.output?.dir || studio.store.dir(id));
       return true;
     });
     ipcMain.handle('save-video', async (event, id) => {
       local(event);
+      await account.requireLogin();
       const p = studio.store.get(id);
       if (!p.output) throw Error('尚未生成视频');
       const r = await dialog.showSaveDialog(window, {

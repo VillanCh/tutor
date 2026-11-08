@@ -45,6 +45,10 @@ jobs:
           else
             unzip -q tutor-ui.zip -d dist/ui
           fi
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            mkdir -p build/generated/media-sources
+            gh release download "v$VERSION" --pattern '*-source.tar.*' --dir build/generated/media-sources
+          fi
       - name: Syntax and regression tests
         run: |
           npm run check

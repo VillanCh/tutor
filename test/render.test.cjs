@@ -7,6 +7,7 @@ const { render } = require('../src/render.cjs'),
   { FFMPEG, run, probe, wav } = require('../src/media.cjs'),
   { normalizeScript } = require('../src/script.cjs'),
   { DEFAULTS } = require('../src/config.cjs');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 test(
   'generic renderer preserves wide video aspect and muxes exact narration gaps',
   async () => {
@@ -74,6 +75,7 @@ test(
       await fs.writeFile(file, wav(pcm));
       audio.push({ file, pcm, duration: 1 });
     }
+    const progress = [];
     const result = await render({
       source,
       info: await probe(source),
@@ -81,11 +83,100 @@ test(
       audio,
       config: DEFAULTS,
       dir,
-      progress: () => {},
+      progress: (ratio) => progress.push(ratio),
     });
     assert.equal(result.verification.passed, true);
+    assert(progress.length > 0);
+    assert(progress.every((ratio) => Number.isFinite(ratio) && ratio >= 0 && ratio <= 1));
     assert.equal(result.plan.canvas.video_width / result.plan.canvas.video_height, 16 / 9);
     assert.equal(result.verification.decodedSpeechGaps.length, 2);
+    assert(
+      result.plan.timeline.labelBaseline - 18 > result.plan.caption.y + result.plan.caption.height,
+      'subtitle layer must leave a separate clear band for chapter labels',
+    );
+    const lastScene = result.plan.scenes.at(-1);
+    const labelSegment = result.plan.chapterSegments.at(-1);
+    const labelX = Math.round(16 + labelSegment.x),
+      labelY = result.plan.timeline.labelBaseline - 18;
+    const labelWidth = Math.floor(labelSegment.width - 2),
+      labelHeight = 24;
+    const { stdout: labelPixels } = await run(FFMPEG, [
+      '-v',
+      'error',
+      '-ss',
+      String(lastScene.audio_start + 0.2),
+      '-i',
+      result.output,
+      '-frames:v',
+      '1',
+      '-vf',
+      'crop=' + labelWidth + ':' + labelHeight + ':' + labelX + ':' + labelY,
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgb24',
+      '-',
+    ]);
+    const expected = createCanvas(labelWidth, labelHeight).getContext('2d');
+    expected.drawImage(
+      await loadImage(path.join(dir, 'assets', 'overlay-2.png')),
+      labelX,
+      labelY,
+      labelWidth,
+      labelHeight,
+      0,
+      0,
+      labelWidth,
+      labelHeight,
+    );
+    const expectedPixels = expected.getImageData(0, 0, labelWidth, labelHeight).data;
+    const dark = (pixels, stride) => {
+      let count = 0;
+      for (let n = 0; n < pixels.length; n += stride)
+        if (pixels[n] < 180 && pixels[n + 1] < 180 && pixels[n + 2] < 180) count++;
+      return count;
+    };
+    assert(dark(expectedPixels, 4) > 30);
+    assert(
+      dark(labelPixels, 3) >= dark(expectedPixels, 4) * 0.9,
+      'active subtitles must not erase the upper strokes of decoded chapter text',
+    );
+    const firstChapter = result.plan.chapterSegments[0];
+    for (const seconds of [firstChapter.end + 0.2, result.plan.total_duration - 0.1]) {
+      const { stdout } = await run(FFMPEG, [
+        '-v',
+        'error',
+        '-ss',
+        String(seconds),
+        '-i',
+        result.output,
+        '-frames:v',
+        '1',
+        '-vf',
+        'crop=' + result.plan.canvas.video_width + ':8:16:' + result.plan.timeline.y,
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        '-',
+      ]);
+      const pixel = (x) => [
+        ...stdout.subarray(
+          (4 * result.plan.canvas.video_width + Math.round(x)) * 3,
+          (4 * result.plan.canvas.video_width + Math.round(x)) * 3 + 3,
+        ),
+      ];
+      const gap = pixel(firstChapter.width + result.plan.timeline.gap / 2);
+      assert(
+        gap[1] > 225 && gap[2] > 210,
+        'chapter separator must remain unfilled in the actual decoded video',
+      );
+      const completed = pixel(firstChapter.width / 2);
+      assert(
+        completed[1] < 180 && completed[2] < 90,
+        'completed chapter must retain its own colored rail',
+      );
+    }
     assert((await fs.stat(path.join(dir, 'subtitles.srt'))).size > 50);
     const { Store, hashFile } = require('../src/store.cjs');
     const store = new Store(path.join(dir, 'workspaces'));

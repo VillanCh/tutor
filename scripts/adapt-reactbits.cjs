@@ -97,7 +97,7 @@ async function adapt(name, params, prefix, transform) {
 async function main() {
   await adapt(
     'ai-chat-2',
-    '{ messages = [], busy, liveContent, header, welcome, placeholder, disabled, onSend, onCancel, onAttach, onArtifact, draftOffer }',
+    '{ messages = [], busy, liveContent, header, welcome, placeholder, disabled, onSend, onCancel, onAttach, onArtifact, draftOffer, composerAccessory, hasAttachments, onPaste, onDrop, onDragOver, onDragEnter, onDragLeave, dragging }',
     `
     const transcript = useScrollFade();
     const { showJump, jumpToLatest } = useStickToBottom(transcript.ref);
@@ -107,7 +107,8 @@ async function main() {
     const LIVE_ID = 'live';
     useEffect(() => { if (draftOffer) { setValue(draftOffer.text); textareaRef.current?.focus(); } }, [draftOffer]);
     const autosize = () => { const el = textareaRef.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; } };
-    const handleSend = (draft) => { if (disabled || busy || !draft.trim()) return; onSend(draft.trim()); setValue(''); };
+    const sendingRef = useRef(false);
+    const handleSend = async (draft) => { if (disabled || busy || sendingRef.current || (!draft.trim() && !hasAttachments)) return; sendingRef.current = true; try { if (await onSend(draft.trim())) setValue(''); } finally { sendingRef.current = false; } };
     const handleStop = () => onCancel?.();
   `,
     (original) => {
@@ -129,6 +130,32 @@ async function main() {
       );
       list.children.unshift(slot('welcome'));
       classReplace(list, 'mt-auto ', '');
+      const userBubble = find(
+        result,
+        (n) =>
+          n.type === 'JSXElement' &&
+          n.children.some(
+            (child) =>
+              child.type === 'JSXExpressionContainer' &&
+              child.expression?.type === 'MemberExpression' &&
+              child.expression.object?.name === 'message' &&
+              child.expression.property?.name === 'text',
+          ),
+      );
+      userBubble.children.push(slot('message.referenceContent'));
+      const textarea = find(
+        result,
+        (n) => n.type === 'JSXElement' && jsxName(n.openingElement.name) === 'textarea',
+      );
+      const composer = find(
+        result,
+        (n) => n.type === 'JSXElement' && n.children.includes(textarea),
+      );
+      attribute(composer, 'data-tutor-composer', text('true'));
+      prop(composer, 'data-dragging', 'dragging || undefined');
+      for (const event of ['onDrop', 'onDragOver', 'onDragEnter', 'onDragLeave'])
+        prop(composer, event, event);
+      composer.children.unshift(slot('composerAccessory'));
       const streamed = find(
         result,
         (n) =>
@@ -156,15 +183,16 @@ async function main() {
             ?.value?.value;
           if (label === 'Add attachment') {
             prop(n, 'onClick', 'onAttach');
-            attribute(n, 'aria-label', text('添加知识资料'));
-            prop(n, 'disabled', 'busy');
+            attribute(n, 'aria-label', text('添加参考图片'));
+            prop(n, 'disabled', 'busy || disabled');
           }
           if (label === 'Send') {
-            prop(n, 'disabled', 'disabled || !value.trim()');
+            prop(n, 'disabled', 'disabled || (!value.trim() && !hasAttachments)');
             attribute(n, 'aria-label', text('发送修改要求'));
           }
           if (label === 'Stop generating') attribute(n, 'aria-label', text('停止当前任务'));
           if (name === 'textarea') {
+            prop(n, 'onPaste', 'onPaste');
             prop(n, 'placeholder', 'placeholder');
             prop(n, 'disabled', 'disabled || busy');
             attribute(n, 'aria-label', text('修改剧本要求'));
@@ -244,6 +272,47 @@ async function main() {
         original,
         (n) => n.type === 'JSXElement' && jsxName(n.openingElement.name) === 'motion.section',
       );
+      attribute(result, 'data-tutor-approval', text('true'));
+      classReplace(
+        result,
+        'ml-auto flex items-center gap-1',
+        'approval-buttons flex items-center gap-2',
+      );
+      walk(result, (n) => {
+        if (n.type !== 'JSXElement') return;
+        if (jsxName(n.openingElement.name) === 'pre')
+          attribute(n, 'data-tutor-approval-details', text('true'));
+        if (
+          n.openingElement.attributes.some(
+            (a) =>
+              a.name?.name === 'className' &&
+              a.value?.value === 'flex flex-wrap items-center gap-1',
+          )
+        )
+          attribute(n, 'className', text('approval-actions'));
+      });
+      const actions = find(
+        result,
+        (n) =>
+          n.type === 'JSXElement' &&
+          n.openingElement.attributes.some(
+            (a) => a.name?.name === 'className' && a.value?.value === 'approval-actions',
+          ),
+      );
+      const buttons = find(
+        actions,
+        (n) =>
+          n.type === 'JSXElement' &&
+          n.openingElement.attributes.some(
+            (a) => a.name?.name === 'className' && a.value?.value?.includes('approval-buttons'),
+          ),
+      );
+      actions.children = actions.children.filter((child) => child !== buttons);
+      const detailsPanel = find(
+        result,
+        (n) => n.type === 'JSXElement' && n.children.includes(actions),
+      );
+      detailsPanel.children.push(buttons);
       const heading = find(
         result,
         (n) =>
@@ -289,11 +358,11 @@ async function main() {
   );
   await adapt(
     'agent-activity-1',
-    '{ steps = [], busy, elapsed = 0, title, onCancel }',
+    '{ steps = [], busy, elapsed = 0, title, onCancel, failed = false, cancelled = false }',
     `
     const feed = useScrollFade(); const STEPS = steps; const stopped = !busy;
     const stepElapsed = elapsed; const totalElapsed = elapsed;
-    const fmt = (seconds) => seconds > 0 ? seconds.toFixed(1) + 's' : '已完成';
+    const fmt = (seconds) => Math.max(0, seconds).toFixed(1) + 's';
   `,
     (result) => {
       classReplace(result, 'min-h-[560px]', 'min-h-0');
@@ -306,6 +375,35 @@ async function main() {
         (n) => n.type === 'JSXElement' && jsxName(n.openingElement.name) === 'h2',
       );
       heading.children = [slot('title')];
+      const statusLine = find(
+        result,
+        (n) =>
+          n.type === 'JSXElement' &&
+          n.openingElement.attributes.some(
+            (a) => a.name?.name === 'aria-live' && a.value?.value === 'polite',
+          ),
+      );
+      replaceNode(
+        statusLine,
+        `<div aria-live="polite" className="activity-outcome" data-outcome={failed ? 'failed' : cancelled ? 'cancelled' : busy ? 'running' : 'idle'}>
+        <span>{busy ? '正在执行' : failed ? '执行失败' : cancelled ? '已取消' : title === '等待人工确认' ? '等待人工确认' : '任务已结束'}</span>
+        {busy && <span> · {elapsed.toFixed(1)}s</span>}
+      </div>`,
+      );
+      walk(result, (n) => {
+        if (
+          n.type === 'JSXExpressionContainer' &&
+          n.expression?.type === 'ConditionalExpression' &&
+          n.expression.test?.left?.object?.name === 'step' &&
+          n.expression.test.left.property?.name === 'state' &&
+          n.expression.test.right?.value === 'done'
+        ) {
+          n.expression.consequent = expression('step.seconds > 0 ? fmt(step.seconds) : "已完成"');
+          n.expression = expression(
+            `step.state === 'failed' ? <span className="activity-step-failed">失败</span> : step.state === 'cancelled' ? '已取消' : (${generate(n.expression).code})`,
+          );
+        }
+      });
       walk(result, (n) => {
         if (n.type === 'StringLiteral') {
           if (n.value === 'Stopped') n.value = '已结束';
@@ -331,6 +429,10 @@ async function main() {
   `,
     (result) => {
       classReplace(result, 'min-h-[480px]', 'min-h-0');
+      attribute(result, 'data-tutor-usage', text('true'));
+      classReplace(result, 'h-44', 'h-20');
+      classReplace(result, 'text-xl', 'text-base');
+      classReplace(result, 'px-4 py-3', 'px-3 py-2');
       strings(result, {
         'Token usage': '模型调用与费用',
         'Input and output tokens billed to this workspace.':

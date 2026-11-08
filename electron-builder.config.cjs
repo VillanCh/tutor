@@ -1,6 +1,4 @@
 const path = require('node:path');
-const ffmpeg = require('ffmpeg-static');
-const ffprobe = require('ffprobe-static').path;
 module.exports = {
   appId: 'com.yaklang.tutor',
   productName: 'Tutor',
@@ -9,11 +7,15 @@ module.exports = {
   electronDist: path.join(__dirname, 'node_modules/electron/dist'),
   asar: true,
   npmRebuild: false,
+  forceCodeSigning: true,
+  afterSign: './scripts/mac-notarize.cjs',
   files: [
     'src/**/*.cjs',
     'src/**/*.mjs',
     'dist/ui/**',
     'build/tutor.png',
+    'build/tutor.svg',
+    'build/fonts/**',
     'package.json',
     'LICENSE',
     'THIRD_PARTY.md',
@@ -24,32 +26,32 @@ module.exports = {
   ],
   asarUnpack: ['**/*.node'],
   extraResources: [
-    {
-      from: path.dirname(ffmpeg),
-      to: 'tools',
-      filter: [
-        path.basename(ffmpeg),
-        path.basename(ffmpeg) + '.LICENSE',
-        path.basename(ffmpeg) + '.README',
-      ],
-    },
-    { from: path.dirname(ffprobe), to: 'tools', filter: [path.basename(ffprobe)] },
+    { from: 'build/generated/tools', to: 'tools' },
     { from: 'build/generated/licenses', to: 'licenses' },
   ],
+  mac: {
+    target: ['dmg', 'zip'],
+    icon: 'build/tutor.icns',
+    category: 'public.app-category.video',
+    hardenedRuntime: true,
+    // The mandatory afterSign hook notarizes and retries ticket stapling before packaging.
+    notarize: false,
+    entitlements: 'build/entitlements.mac.plist',
+    entitlementsInherit: 'build/entitlements.mac.plist',
+    binaries: ['Contents/Resources/tools/ffmpeg', 'Contents/Resources/tools/ffprobe'],
+    artifactName: 'Tutor-${version}-macOS-${arch}.${ext}',
+  },
+  dmg: { title: 'Tutor ${version}', sign: true },
   win: {
     target: [
       { target: 'nsis', arch: ['x64'] },
       { target: 'zip', arch: ['x64'] },
     ],
     icon: 'build/tutor.ico',
-    signExecutable: false,
+    signExecutable: true,
     signAndEditExecutable: true,
+    signtoolOptions: { signingHashAlgorithms: ['sha256'], sign: './scripts/windows-sign.cjs' },
     artifactName: 'Tutor-${version}-windows-${arch}-portable.${ext}',
-  },
-  mac: {
-    target: ['dmg', 'zip'],
-    category: 'public.app-category.video',
-    artifactName: 'Tutor-${version}-mac-${arch}.${ext}',
   },
   linux: {
     target: ['AppImage', 'tar.gz'],

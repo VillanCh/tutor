@@ -1,5 +1,37 @@
 export const ROLE_NAMES = ['vision', 'editor', 'speech'];
 const TTS_PATH = '/api/v1/services/audio/tts/SpeechSynthesizer';
+export const MODEL_OPTIONS = {
+  vision: ['qwen3.8-omni-flash'],
+  editor: ['deepseek-v4.1-flash'],
+  speech: ['qwen-audio-3.1-tts-flash'],
+};
+
+export function aibalanceSource() {
+  return {
+    id: 'aibalance',
+    name: 'AIBalance',
+    kind: 'custom',
+    chatBaseUrl: 'https://aibalance.yaklang.com/v1',
+    speechProtocol: 'dashscope-tts',
+    speechBaseUrl: 'https://aibalance.yaklang.com' + TTS_PATH,
+    credential: 'aibalance',
+  };
+}
+
+export function selectRoleModel(config, role, model) {
+  const previous = config.roles[role];
+  return {
+    ...config,
+    roles: {
+      ...config.roles,
+      [role]: {
+        ...previous,
+        model,
+        ...(model !== previous.model ? { pricingKnown: false } : {}),
+      },
+    },
+  };
+}
 
 export function baseEndpoint(value = '', protocol = 'openai-chat') {
   const suffix = protocol === 'openai-speech' ? '/audio/speech' : '/chat/completions';
@@ -58,11 +90,13 @@ export function migrateSources(value) {
     ) {
       editor.sourceId = primary.id;
     } else {
-      const source = {
-        ...customSource('custom-editor', '独立改稿源'),
-        chatBaseUrl: baseEndpoint(editor.baseUrl),
-        credential: editor.credential,
-      };
+      const source = /\/\/aibalance\.yaklang\.com(?:\/|$)/.test(editor.baseUrl)
+        ? aibalanceSource()
+        : {
+            ...customSource('custom-editor', '独立改稿源'),
+            chatBaseUrl: baseEndpoint(editor.baseUrl),
+            credential: editor.credential,
+          };
       config.sources.push(source);
       editor.sourceId = source.id;
     }
@@ -77,6 +111,8 @@ export function migrateSources(value) {
     if (!sameKey) config.sources.push(source);
     speech.sourceId = source.id;
   }
+  if (!config.sources.some((source) => source.id === 'aibalance'))
+    config.sources.push(aibalanceSource());
   return config;
 }
 
@@ -149,7 +185,14 @@ export function updateSource(config, id, change) {
 export function selectRoleSource(config, role, sourceId) {
   return resolveSources({
     ...config,
-    roles: { ...config.roles, [role]: { ...config.roles[role], sourceId } },
+    roles: {
+      ...config.roles,
+      [role]: {
+        ...config.roles[role],
+        sourceId,
+        ...(sourceId !== config.roles[role].sourceId ? { pricingKnown: false } : {}),
+      },
+    },
   });
 }
 
@@ -166,6 +209,6 @@ export function requestEndpoint(role) {
 
 // Connection metadata does not alter audio. Preserve cache identities from v0.2.
 export function speechCacheRole(role) {
-  const { sourceId, ...connection } = role;
+  const { sourceId, pricingKnown, ...connection } = role;
   return connection;
 }

@@ -93,7 +93,13 @@ test('long narration freezes picture and never overlaps', () => {
 });
 test('cache tokens billed at cache price and missing usage remains unknown', () => {
   const u = usageRecord(
-    DEFAULTS.roles.editor,
+    {
+      ...DEFAULTS.roles.editor,
+      inputPrice: 12,
+      outputPrice: 36,
+      cachedPrice: 1.5,
+      pricingKnown: true,
+    },
     'edit',
     { prompt_tokens: 2000, completion_tokens: 100, prompt_tokens_details: { cached_tokens: 1000 } },
     200,

@@ -555,11 +555,13 @@ app.whenReady().then(async () => {
       "[...document.querySelectorAll('.approval-dialog button')].find(button => button.textContent.includes('我确认')).click()",
     );
     await ui(
-      "!!document.querySelector('.task-error') && document.body.innerText.includes('语音服务暂时不可用')",
+      "!!document.querySelector('.failure-panel') && document.body.innerText.includes('语音服务暂时不可用')",
       'speech failure has an actionable retry',
     );
     assert.equal(project.approval.revision, 2);
-    await evaluate("document.querySelector('.task-error button').click()");
+    await evaluate(
+      "[...document.querySelectorAll('.failure-panel button')].find(el=>el.textContent.includes('重试这一步')).click()",
+    );
     await waitFor(
       () => project.status === 'done' && !project.job,
       'retry completes real video export',
@@ -666,11 +668,13 @@ app.whenReady().then(async () => {
     );
     await evaluate("document.querySelector('.next-action button').click()");
     await ui(
-      "document.querySelector('.task-error')?.textContent.includes('任务已停止')",
+      "document.querySelector('.failure-panel')?.textContent.includes('任务已取消')",
       'cancelled task can continue',
     );
     holdAnalysis = false;
-    await evaluate("document.querySelector('.task-error button').click()");
+    await evaluate(
+      "[...document.querySelectorAll('.failure-panel button')].find(el=>el.textContent.includes('继续任务')).click()",
+    );
     await waitFor(
       () => [...studio.store.projects.values()].filter((p) => p.script && !p.job).length === 2,
       'resume cancelled preparation',

@@ -15,7 +15,8 @@ function run(binary, args, { signal, onProgress, duration } = {}) {
     const child = spawn(binary, args, { windowsHide: true });
     let stdout = [],
       stderr = '',
-      carry = '';
+      carry = '',
+      lastProgress = -1;
     const abort = () => child.kill();
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout.on('data', (chunk) => {
@@ -25,8 +26,17 @@ function run(binary, args, { signal, onProgress, duration } = {}) {
         const lines = carry.split('\n');
         carry = lines.pop();
         for (const line of lines)
-          if (line.startsWith('out_time_us='))
-            onProgress(Math.min(1, Number(line.split('=')[1]) / 1e6 / duration));
+          if (line.startsWith('out_time_us=')) {
+            const time = Number(line.split('=')[1]);
+            // FFmpeg reports a negative timestamp sentinel before its first frame.
+            if (Number.isFinite(time) && time >= 0 && Number.isFinite(duration) && duration > 0) {
+              const ratio = time / 1e6 / duration;
+              if (Number.isFinite(ratio) && ratio <= 1 && ratio >= lastProgress) {
+                lastProgress = ratio;
+                onProgress(ratio);
+              }
+            }
+          }
       }
     });
     child.stderr.on('data', (chunk) => {

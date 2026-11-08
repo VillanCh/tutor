@@ -50,6 +50,8 @@ async function previewReady() {
   await pause(180);
 }
 async function capture(name, selector) {
+  await evaluate('document.fonts.ready.then(() => true)');
+  window.webContents.invalidate();
   await pause(180);
   let rectangle;
   if (selector)

@@ -56,6 +56,7 @@ async function capture(name) {
 }
 async function audit(name, screenshot = false) {
   stage = name;
+  await evaluate('document.fonts.ready.then(() => true)');
   await pause();
   const measured = await evaluate(`(() => {
     const issues=[];
@@ -88,6 +89,17 @@ async function audit(name, screenshot = false) {
       if(r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight) issues.push('project menu escapes viewport');
     }
     const text=document.body.innerText;
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    const smallText=[];
+    while(walker.nextNode()) {
+      const node=walker.currentNode, el=node.parentElement;
+      if(!node.textContent.trim()||!el||el.closest('script,style,svg,[aria-hidden=true],.sr-only,[disabled]')) continue;
+      if(!el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) continue;
+      const range=document.createRange();range.selectNodeContents(node);
+      const visible=[...range.getClientRects()].some(r=>r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth);
+      if(visible&&parseFloat(getComputedStyle(el).fontSize)<11.95) smallText.push(describe(el)+' '+node.textContent.trim().slice(0,35)+' ('+getComputedStyle(el).fontSize+')');
+    }
+    for(const item of [...new Set(smallText)]) issues.push('text below 12px: '+item);
     if(/yakcool/i.test(text.replaceAll('YAKCOOL',''))) issues.push('brand is not uppercase');
     return {viewport:[innerWidth,innerHeight],issues:[...new Set(issues)]};
   })()`);
@@ -378,7 +390,7 @@ app.whenReady().then(async () => {
       await audit('activity-' + suffix);
       project.error = 'https://example.test/' + 'e'.repeat(300);
       studio.engine.publish(project);
-      await waitFor('!!document.querySelector(".task-error")', 'task error');
+      await waitFor('!!document.querySelector(".failure-panel")', 'task error');
       await audit('task-error-' + suffix);
       project.error = null;
       project.review.issues[0].severity = 'blocking';

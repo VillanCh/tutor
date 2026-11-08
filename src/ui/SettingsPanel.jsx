@@ -16,6 +16,23 @@ export default function SettingsPanel({
   requiredUpdate = false,
   logout,
 }) {
+  const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...value.style.brand };
+  const changeBrand = (field, input) =>
+    setValue((previous) => ({
+      ...previous,
+      style: {
+        ...previous.style,
+        brand: {
+          enabled: true,
+          name: 'YAK',
+          tagline: 'TUTORIAL STUDIO',
+          ...previous.style.brand,
+          [field]: input,
+        },
+      },
+    }));
+  const changeStyle = (field, input) =>
+    setValue((previous) => ({ ...previous, style: { ...previous.style, [field]: input } }));
   const updateRole = (role, model) =>
     setValue({ ...value, roles: { ...value.roles, [role]: { model } } });
   return (
@@ -99,6 +116,93 @@ export default function SettingsPanel({
           />
         </label>
       </div>
+      <div className="settings-section-title brand-section-title">
+        <strong>成片品牌与章节</strong>
+        <span>内置字体，离线可用 · 保存后用于下次制作</span>
+      </div>
+      <fieldset disabled={pending} className="brand-settings">
+        <div
+          style={{
+            '--brand-paper': value.style.background,
+            '--brand-ink': value.style.ink,
+            '--brand-accent': value.style.accent,
+            '--brand-gap': (value.style.chapterGap ?? 12) + 'px',
+          }}
+        >
+          <div className="brand-preview" aria-label="成片商标预览">
+            {brand.enabled && (
+              <div className="brand-preview-wordmark">
+                <div className="brand-preview-name">
+                  <span>{brand.name || '品牌名称'}</span>
+                  <i />
+                </div>
+                {brand.tagline && <div className="brand-preview-tagline">{brand.tagline}</div>}
+              </div>
+            )}
+            <div className="brand-preview-step">
+              <strong>教程步骤预览</strong>
+              <small>02 / 03 · 当前章节</small>
+            </div>
+          </div>
+          <div className="brand-preview-track" aria-label="章节分段预览">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+        <label className="brand-enabled">
+          <input
+            type="checkbox"
+            checked={brand.enabled}
+            onChange={(e) => changeBrand('enabled', e.target.checked)}
+          />
+          显示左上角品牌
+        </label>
+        <div className="brand-fields">
+          <label>
+            品牌名称
+            <Input
+              aria-label="成片品牌名称"
+              disabled={!brand.enabled}
+              maxLength={24}
+              value={brand.name}
+              onChange={(e) => changeBrand('name', e.target.value)}
+            />
+          </label>
+          <label>
+            品牌副标题
+            <Input
+              aria-label="成片品牌副标题"
+              disabled={!brand.enabled}
+              maxLength={48}
+              placeholder="可留空"
+              value={brand.tagline}
+              onChange={(e) => changeBrand('tagline', e.target.value)}
+            />
+          </label>
+          <label>
+            品牌与进度条点缀色
+            <input
+              aria-label="成片点缀色"
+              type="color"
+              value={value.style.accent}
+              onChange={(e) => changeStyle('accent', e.target.value)}
+            />
+          </label>
+          <label>
+            章节分段间距（像素）
+            <Input
+              aria-label="章节分段间距"
+              type="number"
+              min="6"
+              max="24"
+              step="1"
+              value={value.style.chapterGap ?? 12}
+              onChange={(e) => changeStyle('chapterGap', Number(e.target.value))}
+            />
+          </label>
+        </div>
+      </fieldset>
       <div className="settings-footer">
         <p>模型使用账户可用服务，余额支持随时手动刷新。</p>
         <div className="settings-footer-actions">

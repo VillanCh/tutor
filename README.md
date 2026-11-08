@@ -80,7 +80,7 @@ Chat 使用 YAKCOOL 返回的受信任 Yaklang HTTPS 网关的 `/v1/chat/complet
 
 每个确认版本保存在独立输出目录，包含 MP4、SRT、脚本、剪辑时间表、验证结果和音频等制作文件。`edit-plan.json` 保留素材编号和片内时间便于追溯。应用不提供 Key 或成本文件下载。项目、知识、媒体与会话均保存在本机用户目录，不进入 Git；`TUTOR_DATA_DIR` 可更改项目目录，桌面应用会记住上次的位置。
 
-Windows 媒体工具使用 `.exe`，macOS/Linux 使用无后缀程序。各平台应在对应操作系统和目标架构安装依赖后构建，不能直接复用 Windows 的 `node_modules`；Linux 建议安装 Noto CJK 字体。当前工作站实际验证为 Windows，其他平台路径有模拟测试。
+Windows 媒体工具使用 `.exe`，macOS/Linux 使用无后缀程序。各平台应在对应操作系统和目标架构安装依赖后构建，不能直接复用 Windows 的 `node_modules`。界面与成片均内置中文和品牌字体，离线可用。正式发行支持 Windows x64、macOS Intel 和 Apple Silicon。
 
 原有直接传 Key 的命令行制作模式已关闭；请在桌面版登录后完成制作，避免绕过账户流程。不要让多个进程同时写同一项目目录。
 
@@ -95,7 +95,7 @@ Windows 媒体工具使用 `.exe`，macOS/Linux 使用无后缀程序。各平�
 
 测试包含登录权限、会话过期、余额未知与刷新、退出竞态、凭据不外泄、固定网关、禁止 Key/成本下载，以及多素材脚本、草稿恢复、人工核对、失败重试、真实 FFmpeg 剪辑、字幕完整性和音画验证。桌面回归使用隔离账户/模型响应，实际视频编码及 Chromium 播放不作模拟。截图与报告位于 `build/generated/multi-video-smoke`。
 
-`test:ui` 在真实 Chromium 中巡检各页面和弹窗，覆盖长文本、详情展开、窄窗口及 125% / 150% 缩放，检查内容边界和操作可达性。截图与报告位于 `build/generated/ui-layout`。紧凑窗口下可从顶部教程与账户菜单查看余额、刷新及退出。
+`test:ui` 在真实 Chromium 中巡检各页面和弹窗，覆盖长文本、详情展开、窄窗口及 125% / 150% 缩放，检查内容边界、文字最小字号和操作可达性。截图与报告位于 `build/generated/ui-layout`。紧凑窗口下可从顶部教程与账户菜单查看余额、刷新及退出。
 
 `test:branding` 生成包含品牌片头、教学正文、片尾及 8% 不透明度全屏水印的完整演示，并验证首次功能导览、实时预览对比、人工确认、实际编码和 Chromium 播放，不调用模型。功能导览、具体用法、设置、工作台及分段截图和演示 MP4 位于 `build/generated/branding-showcase`。
 
@@ -103,6 +103,6 @@ Windows 媒体工具使用 `.exe`，macOS/Linux 使用无后缀程序。各平�
 
     electron test/electron-yakcool-login.cjs
 
-Windows 开发机安装有授权的界面组件后运行 `npm run release:win`，生成安装程序和免安装 ZIP。打包只携带编译后的界面、业务代码、运行时依赖和对应平台媒体工具，不携带密钥、会话、用户媒体或付费组件源码。
+开发机安装有授权的界面组件并配置签名环境后运行 `npm run release:win`，生成对应平台安装包与 ZIP；正式发行使用 `.github/workflows/release-build.yml` 的原生 Windows / macOS 构建、代码签名、公证和封包验证。打包只携带编译后的界面、业务代码、运行时依赖和对应平台媒体工具，不携带密钥、会话、用户媒体或付费组件源码。
 
 ReactBits Pro 源码、Agent Kit 和开发授权仅保存在授权开发者本机，公开仓库提供业务代码与组件安装、适配脚本。参考 [ReactBits Pro 许可证](https://pro.reactbits.dev/license)、[Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage) 和 [Y CONNECT 登录实现](https://github.com/yaklang/yconnect/blob/main/darwin/Sources/YConnect/WebLogin.swift)。

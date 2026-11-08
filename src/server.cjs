@@ -7,6 +7,8 @@ const { createReadStream } = require('node:fs'),
   { Engine } = require('./engine.cjs');
 const { findSource } = require('./sources.cjs');
 const { YakcoolAccount } = require('./yakcool.cjs');
+const { parseReferences } = require('./references.cjs');
+const { VIDEO_EXTENSIONS, VIDEO_UPLOAD_BYTES } = require('./file-policy.mjs');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -20,16 +22,20 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.srt': 'text/plain; charset=utf-8',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.wav': 'audio/wav',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.otf': 'font/otf',
+  '.ttf': 'font/ttf',
 };
-async function readJson(req) {
+async function readJson(req, maxBytes = 2 * 1024 * 1024) {
   let data = '',
     size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 2 * 1024 * 1024) throw Error('请求内容过大');
+    if (size > maxBytes) throw Error('请求内容过大');
     data += chunk;
   }
   return JSON.parse(data || '{}');
@@ -74,6 +80,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
     token = crypto.randomBytes(24).toString('hex'),
     listeners = new Set();
   const previewFrames = new Map();
+  const startingProjects = new Set();
   engine.on('project', (p) => {
     if (account.public().authenticated)
       for (const res of listeners) res.write('data: ' + JSON.stringify(p) + '\n\n');
@@ -87,6 +94,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
   };
   account.on('change', accountChanged);
   const server = http.createServer(async (req, res) => {
+    let affectedProject;
     try {
       const host = '127.0.0.1:' + server.address().port;
       if (req.headers.host !== host) throw Error('请求来源无效');
@@ -115,6 +123,35 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(await store.markGuideSeen(d.version));
       }
       if (parts[0] === 'api') await account.requireLogin();
+      if (url.pathname === '/api/uploads/video' && req.method === 'POST') {
+        const ext = path.extname(url.searchParams.get('name') || '').toLowerCase();
+        if (!VIDEO_EXTENSIONS.includes(ext)) throw Error('视频仅支持 MP4、MOV、MKV、WebM 和 AVI');
+        if (Number(req.headers['content-length']) > VIDEO_UPLOAD_BYTES)
+          throw Error('上传视频不能超过 1 GB');
+        const dir = path.join(store.root, 'uploads');
+        await fs.mkdir(dir, { recursive: true });
+        const file = path.join(dir, crypto.randomUUID() + ext);
+        const handle = await fs.open(file, 'wx');
+        let size = 0;
+        try {
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > VIDEO_UPLOAD_BYTES) throw Error('上传视频不能超过 1 GB');
+            await handle.writeFile(chunk);
+          }
+          if (!size) throw Error('视频文件为空');
+          await handle.close();
+          const info = await require('./media.cjs').probe(file);
+          if (!info.width || !info.height || !Number.isFinite(info.duration) || info.duration <= 0)
+            throw Error('无法读取视频文件');
+          if (info.duration > store.config.limits.maxDuration) throw Error('视频不能超过 10 分钟');
+          return json({ source: file });
+        } catch (error) {
+          await handle.close().catch(() => {});
+          await fs.rm(file, { force: true });
+          throw error;
+        }
+      }
       if (url.pathname === '/api/events') {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -210,8 +247,18 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
       if (parts[0] === 'api' && parts[1] === 'projects' && parts[2]) {
         const p = store.get(parts[2]),
           action = parts[3];
+        affectedProject = p;
         if (req.method === 'GET') {
           if (!action) return json(store.public(p));
+          if (action === 'reference') {
+            const id = parts[4];
+            const attachment = p.chat
+              ?.flatMap((message) => message.attachments || [])
+              .find((a) => a.id === id);
+            if (!attachment || !/^reference-[a-f0-9-]{36}\.(png|jpg|webp)$/.test(attachment.file))
+              throw Error('参考图片不存在');
+            return await streamFile(req, res, path.join(store.dir(p.id), attachment.file));
+          }
           if (action === 'source')
             return await streamFile(req, res, findSource(p, url.searchParams.get('source')).path);
           if (action === 'output') {
@@ -251,19 +298,41 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
           }
         }
         if (req.method === 'POST') {
-          const d = await readJson(req);
+          const d = await readJson(req, action === 'edit' ? 18 * 1024 * 1024 : undefined);
           if (action === 'prepare' || action === 'edit' || action === 'render') {
             store.requireModelConfirmation();
-            if (p.job) throw Error('项目任务尚未结束');
-            if (action === 'render') require('./script.cjs').requireApproval(p);
-            const job =
-              action === 'prepare'
-                ? engine.prepare(p.id)
-                : action === 'edit'
-                  ? engine.edit(p.id, String(d.message || ''))
-                  : engine.generate(p.id);
-            job.catch(() => {});
-            return json({ started: true });
+            if (p.job || startingProjects.has(p.id)) throw Error('项目任务尚未结束');
+            if (action === 'render') {
+              require('./script.cjs').requireApproval(p);
+              if (d.hash && d.hash !== require('./script.cjs').scriptHash(p.script))
+                throw Error('剧本已更新，请刷新后确认当前版本');
+            }
+            if (action === 'edit') {
+              parseReferences(d.images);
+              if (!String(d.message || '').trim() && !d.images?.length)
+                throw Error('请输入修改要求或添加参考图片');
+            }
+            startingProjects.add(p.id);
+            let onStarted;
+            const started = new Promise((resolve) => {
+              onStarted = (snapshot) => {
+                if (snapshot.id === p.id && snapshot.job) resolve(snapshot);
+              };
+              engine.on('project', onStarted);
+            });
+            try {
+              const job =
+                action === 'prepare'
+                  ? engine.prepare(p.id)
+                  : action === 'edit'
+                    ? engine.edit(p.id, String(d.message || ''), d.images)
+                    : engine.generate(p.id);
+              const snapshot = await Promise.race([started, job.then(() => store.public(p))]);
+              return json({ started: true, project: snapshot });
+            } finally {
+              engine.off('project', onStarted);
+              startingProjects.delete(p.id);
+            }
           }
           if (action === 'script')
             return json(store.public(await engine.saveScript(p.id, d.script)));
@@ -295,7 +364,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
       }
       if (req.method !== 'GET') throw Error('不支持的请求');
       const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      const isAsset = /^assets\/[A-Za-z0-9_.-]+\.(js|css|woff2|svg|png)$/.test(name);
+      const isAsset = /^assets\/[A-Za-z0-9_.-]+\.(js|css|woff2|otf|ttf|svg|png)$/.test(name);
       if (name !== 'index.html' && !isAsset) {
         res.writeHead(404);
         res.end();
@@ -323,7 +392,12 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
       res.writeHead([401, 409].includes(e.status) ? e.status : 400, {
         'Content-Type': 'application/json; charset=utf-8',
       });
-      res.end(JSON.stringify({ error: engine.redact(e.message) }));
+      res.end(
+        JSON.stringify({
+          error: engine.redact(e.message),
+          ...(affectedProject ? { project: store.public(affectedProject) } : {}),
+        }),
+      );
     }
   });
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));

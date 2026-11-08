@@ -28,8 +28,8 @@ assert.ok(!/\{\{[A-Z_]+\}\}/.test(html), 'Unresolved template values');
 for (const [pattern, label] of [
   [/<html lang="zh-CN">/, 'Chinese document language'],
   [/软件免费/, 'Free software notice'],
-  [/yakcool\.com 充值并配置自己的 KEY/, 'Recharge and personal KEY requirement'],
-  [/软件免费不代表 AI 调用免费/, 'AI usage billing disclosure'],
+  [/登录 YAKCOOL 账户并确保服务额度充足/, 'YAKCOOL account and service credit requirement'],
+  [/软件免费不代表\s*AI\s*调用免费/, 'AI usage billing disclosure'],
   [/相关视频、知识资料和剧本文本会发送/, 'Model data transmission disclosure'],
   [/data-download="mac-arm"/, 'Apple Silicon download'],
   [/data-download="mac-intel"/, 'Intel download'],
@@ -72,5 +72,5 @@ assert.ok([...resources].includes('./assets/tutor-automated-chapters.vtt'));
 assert.ok([...resources].includes('./assets/workbench.webp'));
 if (!baseUrl) execFileSync(process.execPath, ['--check', path.join(root, 'app.js')]);
 console.log(
-  `${baseUrl ? 'Live' : 'Local'} website verified: ${build.commit.slice(0, 7)}, v${build.version}, ${resources.size} assets, downloads, anchors, KEY notice and captions`,
+  `${baseUrl ? 'Live' : 'Local'} website verified: ${build.commit.slice(0, 7)}, v${build.version}, ${resources.size} assets, downloads, anchors, account notice and captions`,
 );

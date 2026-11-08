@@ -9,6 +9,8 @@ const {
   WATERMARK_TONES,
 } = require('./branding-options.mjs');
 const { FFMPEG, run, probe, wav } = require('./media.cjs');
+const { font: contentFont } = require('./fonts.cjs');
+const { brandLayout, paintHeader } = require('./tutorial-brand.cjs');
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 const VIDEO = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
 const LABELS = { intro: '片头广告', outro: '片尾广告', watermark: '水印 Logo' };
@@ -182,8 +184,7 @@ async function watermarkLayer(w, canvas) {
     height = image.height * scale;
   } else {
     size = Math.min(tiled ? W * 0.033 : 36, maxHeight / 1.6, maxWidth / 2);
-    const font = (s) =>
-      (tiled ? '500 ' : '') + s + 'px "Tutor Sans", "Microsoft YaHei", sans-serif';
+    const font = (s) => (tiled ? '500 ' : '') + contentFont(s);
     ctx.font = font(size);
     size *= Math.min(1, (maxWidth - (tiled ? 0 : 12)) / Math.max(1, ctx.measureText(w.text).width));
     ctx.font = font(size);
@@ -263,9 +264,9 @@ async function brandingPreview({
     Math.round(Math.min(1400, (vw * (info?.height || 720)) / (info?.width || 1280)) / 2) * 2;
   const canvas = {
     width: W,
-    height: 52 + vh + 108,
+    height: 72 + vh + 128,
     video_x: 16,
-    video_y: 52,
+    video_y: 72,
     video_width: vw,
     video_height: vh,
   };
@@ -274,41 +275,46 @@ async function brandingPreview({
   ctx.fillStyle = style.background;
   ctx.fillRect(0, 0, W, canvas.height);
   ctx.fillStyle = '#eef0f4';
-  ctx.fillRect(16, 52, vw, vh);
+  ctx.fillRect(16, 72, vw, vh);
   if (background) {
     const image = await loadImage(background);
     const scale = Math.min(vw / image.width, vh / image.height);
     ctx.drawImage(
       image,
       16 + (vw - image.width * scale) / 2,
-      52 + (vh - image.height * scale) / 2,
+      72 + (vh - image.height * scale) / 2,
       image.width * scale,
       image.height * scale,
     );
   } else {
     ctx.fillStyle = '#dde2eb';
-    ctx.fillRect(16, 52, vw * 0.22, vh);
+    ctx.fillRect(16, 72, vw * 0.22, vh);
     for (let row = 0; row < 5; row++) {
       ctx.fillStyle = row === 1 ? '#c6cde0' : '#d1d7e2';
-      ctx.fillRect(vw * 0.04, 90 + row * vh * 0.11, vw * 0.15, vh * 0.055);
+      ctx.fillRect(vw * 0.04, 110 + row * vh * 0.11, vw * 0.15, vh * 0.055);
     }
     ctx.fillStyle = '#fff';
-    ctx.fillRect(vw * 0.26, 92, vw * 0.68, vh * 0.78);
+    ctx.fillRect(vw * 0.26, 112, vw * 0.68, vh * 0.78);
     ctx.fillStyle = '#c0c9d9';
     for (let row = 0; row < 6; row++)
-      ctx.fillRect(vw * 0.3, 140 + row * vh * 0.095, vw * (row % 2 ? 0.48 : 0.57), 9);
+      ctx.fillRect(vw * 0.3, 160 + row * vh * 0.095, vw * (row % 2 ? 0.48 : 0.57), 9);
   }
+  paintHeader(
+    ctx,
+    brandLayout(ctx, style, W, 16),
+    { heading, chapter: 0 },
+    { canvas: { width: W }, chapters: ['教程预览'] },
+    style,
+    16,
+  );
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = style.ink;
-  ctx.font = '21px "Tutor Sans", "Microsoft YaHei", sans-serif';
-  ctx.fillText('TUTOR / ' + heading.slice(0, 50), 26, 27);
   ctx.fillStyle = '#81786d';
   ctx.textAlign = 'center';
-  ctx.font = '27px "Tutor Sans", "Microsoft YaHei", sans-serif';
+  ctx.font = contentFont(27);
   const subtitle = caption
     ? Array.from(caption).slice(0, 38).join('')
     : '字幕保护示意 · 讲解文字显示于此区域';
-  ctx.fillText(subtitle, W / 2, 52 + vh + 45, W - 60);
+  ctx.fillText(subtitle, W / 2, 72 + vh + 38, W - 60);
   if (w.enabled) {
     try {
       ctx.drawImage(await watermarkLayer(w, canvas), 0, 0);

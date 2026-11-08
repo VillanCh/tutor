@@ -133,8 +133,15 @@ function approve(project, expectedHash) {
   if (!project.script || project.job) throw Error('当前无法确认剧本');
   const hash = scriptHash(project.script);
   if (expectedHash !== hash) throw Error('剧本已更新，请重新阅读后确认');
-  if (project.review?.issues?.some((i) => i.severity === 'blocking' && i.resolved !== true))
-    throw Error('剧本有待解决的阻断问题');
+  const blocking =
+    project.review?.issues?.filter(
+      (issue) => issue.severity === 'blocking' && issue.resolved !== true,
+    ) || [];
+  if (blocking.length)
+    throw Error(
+      '剧本有待解决的阻断问题：\n' +
+        blocking.map((issue) => [issue.scene, issue.message].filter(Boolean).join('：')).join('\n'),
+    );
   project.approval = {
     scriptHash: hash,
     revision: project.revision,

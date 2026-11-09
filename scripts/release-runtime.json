@@ -1,0 +1,73 @@
+{
+  "electronVersion": "44.7.0",
+  "ffmpegStaticVersion": "5.3.0",
+  "ffmpegRelease": "b6.1.1",
+  "platforms": {
+    "win32-x64": {
+      "electron": {
+        "id": 619269304,
+        "name": "electron-v44.7.0-win32-x64.zip",
+        "sha256": "eee30dc8fa1f5ea95490e59f44e46ea68dd24c6e93d22facf70fe5c2d4c2665c"
+      },
+      "ffmpeg": {
+        "id": 316528798,
+        "name": "ffmpeg-win32-x64.gz",
+        "sha256": "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77"
+      },
+      "license": {
+        "id": 316529930,
+        "name": "win32-x64.LICENSE",
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "readme": {
+        "id": 316529965,
+        "name": "win32-x64.README",
+        "sha256": "a636a7183c58006351acbaf35303c0ed85c6e1320fd4e80de453ba6157de6311"
+      }
+    },
+    "darwin-x64": {
+      "electron": {
+        "id": 619399796,
+        "name": "electron-v44.7.0-darwin-x64.zip",
+        "sha256": "4fe494a7159b10a81e2098dab388719582065e99e604c4510bb117e282213566"
+      },
+      "ffmpeg": {
+        "id": 316528367,
+        "name": "ffmpeg-darwin-x64.gz",
+        "sha256": "929b375c1182d956c51f7ac25e0b2b0411fb01f6f407aa15c9758efeb4242106"
+      },
+      "license": {
+        "id": 316528264,
+        "name": "darwin-x64.LICENSE",
+        "sha256": "2e1d16c72fd74e12063776371da757322f8b77589386532f4fd8634bde7de1af"
+      },
+      "readme": {
+        "id": 316528268,
+        "name": "darwin-x64.README",
+        "sha256": "e88a0325f8e5b75210355e37341824f074d3cd82def2125be54c914b62848a36"
+      }
+    },
+    "darwin-arm64": {
+      "electron": {
+        "id": 619400693,
+        "name": "electron-v44.7.0-darwin-arm64.zip",
+        "sha256": "e04e411b58a0a14375dd21b0ab4a378fd38930a702e4e20e322fee4849404c0b"
+      },
+      "ffmpeg": {
+        "id": 316528311,
+        "name": "ffmpeg-darwin-arm64.gz",
+        "sha256": "8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa"
+      },
+      "license": {
+        "id": 316528240,
+        "name": "darwin-arm64.LICENSE",
+        "sha256": "cb48bf09a11f5fb576cddb0431c8f5ed0a60157a9ec942adffc13907cbe083f2"
+      },
+      "readme": {
+        "id": 316528259,
+        "name": "darwin-arm64.README",
+        "sha256": "05ba4b92c96605434b1aaae3eedf5a2c280c9607bf78ffca9a5b536d9af2dc6a"
+      }
+    }
+  }
+}

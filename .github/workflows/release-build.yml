@@ -29,18 +29,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
-      - name: Download native Electron runtime
-        run: |
-          for attempt in 1 2 3; do
-            if node node_modules/electron/install.js; then
-              exit 0
-            fi
-            if [ "$attempt" != "3" ]; then
-              sleep 15
-            fi
-          done
-          exit 1
+      # Prepare native tools explicitly from pinned official assets below.
+      - run: npm ci --ignore-scripts
+      - name: Prepare verified native runtime and media tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-release-runtime.cjs
       - name: Download compiled UI from release draft
         env:
           GH_TOKEN: ${{ github.token }}

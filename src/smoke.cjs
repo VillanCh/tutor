@@ -70,11 +70,14 @@ module.exports = async function smoke(reportFile, version) {
       info: await probe(source),
       script,
       audio,
+      exportOptions: { aspect: '9:16', shortEdge: 720 },
       config: DEFAULTS,
       dir,
       progress: () => {},
     });
     if (!result.verification.passed) throw Error('Packaged video verification failed');
+    if (result.plan.canvas.width !== 720 || result.plan.canvas.height !== 1280)
+      throw Error('Packaged portrait export has incorrect dimensions');
     // Isolated release verification never signs in a person or contacts a model service.
     const account = new (require('node:events').EventEmitter)();
     account.init = async () => {};
@@ -105,6 +108,8 @@ module.exports = async function smoke(reportFile, version) {
       document.body.appendChild(video);
     })`);
     if (!playback.width || playback.readyState < 2) throw Error('Desktop video did not decode');
+    if (!process.env.TUTOR_SMOKE_VIDEO && (playback.width !== 720 || playback.height !== 1280))
+      throw Error('Desktop portrait video has incorrect dimensions');
     playbackWindow.destroy();
     playbackWindow = null;
     const htmlResponse = await fetch(server.url + '/');
@@ -144,6 +149,7 @@ module.exports = async function smoke(reportFile, version) {
         ffprobe: true,
         videoDecode: true,
         desktopVideoPlayback: true,
+        portraitExport: true,
         silentNarrationGap: true,
         frontendAssets: assets.length,
         documentImportModule: true,

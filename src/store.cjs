@@ -4,6 +4,8 @@ const fs = require('node:fs/promises'),
 const { DEFAULTS, validateConfig } = require('./config.cjs');
 const { projectSources } = require('./sources.cjs');
 const { importBranding, brandingHash } = require('./branding.cjs');
+const { exportHash } = require('./frame-layout.cjs');
+const { normalizeExportOptions } = require('./export-options.mjs');
 const { GUIDE_VERSION } = require('./guide-content.mjs');
 const { YakcoolAccount } = require('./yakcool.cjs');
 const { managedConfig, publicConfig } = require('./managed-config.cjs');
@@ -309,6 +311,8 @@ class Store {
       progress,
       scriptHash: p.script ? require('./script.cjs').scriptHash(p.script) : null,
       brandingHash: brandingHash(p.branding),
+      exportOptions: normalizeExportOptions(p.exportOptions),
+      exportHash: exportHash(p.exportOptions),
     };
   }
   writeSettings(config, policy) {

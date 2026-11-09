@@ -12,6 +12,7 @@ export default function WatermarkPreview({ branding, project }) {
   const placeholder = w.enabled && (w.type === 'image' ? !w.path.trim() : !w.text.trim());
   const value = JSON.stringify({
     projectId: project?.id,
+    exportOptions: project?.exportOptions,
     watermark: {
       ...w,
       enabled: w.enabled && !before,

@@ -256,8 +256,18 @@ async function brandingPreview({
   background,
   heading = '操作与结果',
   caption,
+  exportOptions,
 }) {
   const w = normalizeBranding({ watermark }).watermark;
+  if (exportOptions?.aspect && exportOptions.aspect !== 'auto')
+    return require('./frame-layout.cjs').framePreview({
+      info,
+      style,
+      exportOptions,
+      background,
+      scene: { heading, narration: caption },
+      watermark: w,
+    });
   const W = style.width,
     vw = W - 32;
   const vh =
@@ -373,11 +383,11 @@ async function applyBranding({
     filter +=
       '[' +
       i +
-      ':v]scale=' +
+      ':v]scale=trunc(iw*sar/2)*2:ih,setsar=1,scale=' +
       W +
       ':' +
       H +
-      ':force_original_aspect_ratio=decrease,' +
+      ':force_original_aspect_ratio=decrease:force_divisible_by=2,' +
       'pad=' +
       W +
       ':' +

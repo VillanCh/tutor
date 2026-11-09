@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { projectSources, sourceIdentities } = require('./sources.cjs');
 const { brandingHash } = require('./branding.cjs');
+const { exportHash } = require('./frame-layout.cjs');
 function parseJson(text) {
   const clean = String(text)
     .trim()
@@ -150,6 +151,7 @@ function approve(project, expectedHash) {
     sourceHash: project.sourceHash || null,
     sourceHashes: sourceIdentities(project),
     brandingHash: brandingHash(project.branding),
+    exportHash: exportHash(project.exportOptions),
     knowledgeHash: crypto
       .createHash('sha256')
       .update(project.knowledge || '')
@@ -167,6 +169,8 @@ function requireApproval(project) {
     throw Error('请先人工确认当前版本的剧本');
   if ((project.approval.brandingHash || brandingHash()) !== brandingHash(project.branding))
     throw Error('广告或水印已变更，请重新确认');
+  if ((project.approval.exportHash || exportHash()) !== exportHash(project.exportOptions))
+    throw Error('导出比例或清晰度已变更，请重新确认');
   if (
     project.approval.knowledgeHash !==
     crypto

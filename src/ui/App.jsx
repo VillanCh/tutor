@@ -63,6 +63,8 @@ import Approval from './vendor/tutor/agent-approval-1';
 import Activity from './vendor/tutor/agent-activity-1';
 import SettingsPanel from './SettingsPanel';
 import BrandingPanel from './BrandingPanel';
+import ExportPanel, { ExportPreview } from './ExportPanel';
+import { normalizeExportOptions, exportSummary } from '../export-options.mjs';
 import { brandingDefaults, brandingSummary } from '../branding-options.mjs';
 import StreamOutput from './StreamOutput';
 import { balanceText, YakcoolAccountCard } from './YakcoolAccount';
@@ -420,6 +422,21 @@ function ScenePreview({ project, scene, onExpand }) {
     video.currentTime = frameTime(scene, project);
   };
   useEffect(seek, [scene?.id, scene?.source_id, scene?.source_start, scene?.freeze_at, project.id]);
+  if (
+    scene?.kind === 'title' &&
+    project.exportOptions?.aspect &&
+    project.exportOptions.aspect !== 'auto'
+  )
+    return (
+      <div className="scene-media title-export-media">
+        <ExportPreview
+          project={project}
+          value={project.exportOptions}
+          kind="title"
+          sceneId={scene.id}
+        />
+      </div>
+    );
   if (scene?.kind === 'title')
     return (
       <div className="scene-media title-media">
@@ -726,6 +743,7 @@ function VideoPanel({
   setOutput,
   onSave,
   onReveal,
+  onExportOptions,
   sourceTime = 0,
   sourceId,
   outputTime = 0,
@@ -835,9 +853,22 @@ function VideoPanel({
             <span>
               <CheckCircle2 size={15} /> {finishedCurrent ? '你的教程已完成' : '已保存的历史成片'}
             </span>
-            <Button size="sm" onClick={onSave}>
-              <ArrowDownToLine size={14} /> 保存视频
-            </Button>
+            <div className="export-save-actions">
+              {onExportOptions && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onExportOptions}
+                  disabled={!!project.job}
+                >
+                  <Maximize2 size={14} />
+                  调整导出比例
+                </Button>
+              )}
+              <Button size="sm" onClick={onSave}>
+                <ArrowDownToLine size={14} /> 保存视频
+              </Button>
+            </div>
           </div>
           <div className="export-files">
             {[
@@ -933,6 +964,8 @@ export default function App({ account, refreshAccount, logout, accountPending })
   );
   const [brandingDraft, setBrandingDraft] = useState(null);
   const [brandingOpen, setBrandingOpen] = useState(false);
+  const [exportDraft, setExportDraft] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [inspection, setInspection] = useState(null);
   const [importDraftReady, setImportDraftReady] = useState(false);
   const [sourceName, setSourceName] = useState('');
@@ -1481,6 +1514,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
           hash: project.scriptHash,
           revision: project.revision,
           brandingHash: project.brandingHash,
+          exportHash: project.exportHash,
         });
         updateProject(confirmed);
         await startTask('render', {}, confirmed);
@@ -1553,6 +1587,32 @@ export default function App({ account, refreshAccount, logout, accountPending })
     });
     setBrandingOpen(true);
   };
+  const showExportOptions = (returnToApproval = false) => {
+    setExportDraft({
+      id: project.id,
+      revision: project.revision,
+      value: normalizeExportOptions(project.exportOptions),
+      returnToApproval,
+      restoreApproval: approveOpen,
+    });
+    setApproveOpen(false);
+    setExportOpen(true);
+  };
+  const saveExportOptions = () =>
+    perform(async () => {
+      const p = await api(endpoint({ id: exportDraft.id }, 'export-settings'), {
+        revision: exportDraft.revision,
+        exportOptions: exportDraft.value,
+      });
+      updateProject(p);
+      setExportOpen(false);
+      if (exportDraft.returnToApproval && p.output?.revision !== p.revision) setApproveOpen(true);
+      toast.success(
+        p.revision === exportDraft.revision
+          ? '已保留当前画布设置。'
+          : '导出画布已应用，审核后制作所选比例的成片。',
+      );
+    });
   const saveBranding = () =>
     perform(async () => {
       const p = await api(endpoint({ id: brandingDraft.id }, 'branding'), {
@@ -1610,6 +1670,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
   useEffect(() => {
     if (!guideIntent || !settings || settings.modelPolicy?.requiresConfirmation) return;
     consumeIntent();
+    setExportOpen(false);
     const focus = (selector) =>
       requestAnimationFrame(() => document.querySelector(selector)?.focus());
     if (guideIntent.feature === 'import') {
@@ -1678,6 +1739,8 @@ export default function App({ account, refreshAccount, logout, accountPending })
       if (project?.output) {
         setView('video');
         setOutput(true);
+      } else if (project?.script && !busy) {
+        showExportOptions();
       } else {
         setView(project?.script ? 'script' : 'activity');
         toast('完成制作后，即可预览和保存视频。');
@@ -2170,14 +2233,28 @@ export default function App({ account, refreshAccount, logout, accountPending })
                       <Clapperboard size={14} />
                       <span>{brandingSummary(project.branding)}</span>
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={showBranding}
-                      disabled={busy || pending}
-                    >
-                      广告与水印 <Settings2 size={13} />
-                    </Button>
+                    <div className="branding-project-actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={showBranding}
+                        disabled={busy || pending}
+                      >
+                        广告与水印 <Settings2 size={13} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy || pending}
+                        onClick={() => showExportOptions()}
+                        aria-label="导出比例与画布"
+                      >
+                        <Maximize2 size={13} />
+                        {project.exportOptions?.aspect && project.exportOptions.aspect !== 'auto'
+                          ? project.exportOptions.aspect
+                          : '导出比例'}
+                      </Button>
+                    </div>
                   </div>
                   <FailurePanel
                     project={project}
@@ -2255,6 +2332,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                       }
                       onSave={saveVideo}
                       onReveal={reveal}
+                      onExportOptions={() => showExportOptions(true)}
                     />
                   )}
                   {view === 'json' && (
@@ -2497,6 +2575,46 @@ export default function App({ account, refreshAccount, logout, accountPending })
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={exportOpen}
+        onOpenChange={(open) => {
+          setExportOpen(open);
+          if (!open && exportDraft?.restoreApproval) setApproveOpen(true);
+        }}
+      >
+        <DialogContent className="export-dialog">
+          <DialogHeader>
+            <DialogTitle>导出画布与比例</DialogTitle>
+            <DialogDescription>
+              选择发布尺寸，预览框架与过场。录屏保持等比，字幕独立排版。
+            </DialogDescription>
+          </DialogHeader>
+          {exportDraft && project && (
+            <ExportPanel
+              project={project}
+              value={exportDraft.value}
+              setValue={(value) => setExportDraft((draft) => ({ ...draft, value }))}
+              disabled={busy || pending}
+            />
+          )}
+          <div className="dialog-footer">
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                setExportOpen(false);
+                if (exportDraft?.restoreApproval) setApproveOpen(true);
+              }}
+            >
+              取消
+            </Button>
+            <Button disabled={busy || pending} onClick={saveExportOptions}>
+              <Save size={14} />
+              {pending ? '正在应用…' : '应用画布比例'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={knowledgeOpen} onOpenChange={setKnowledgeOpen}>
         <DialogContent className="knowledge-dialog">
           <DialogHeader>
@@ -2560,6 +2678,22 @@ export default function App({ account, refreshAccount, logout, accountPending })
             </div>
           )}
           {project?.script && (
+            <div className="approval-export">
+              <span>
+                <Maximize2 size={15} />
+                {exportSummary(project.exportOptions, project.info, settings?.config.style)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy || pending}
+                onClick={() => showExportOptions(true)}
+              >
+                调整导出比例
+              </Button>
+            </div>
+          )}
+          {project?.script && (
             <Approval
               title={'确认第 ' + project.revision + ' 版剧本'}
               description={
@@ -2576,6 +2710,11 @@ export default function App({ account, refreshAccount, logout, accountPending })
                   hash: project.scriptHash,
                   voice: settings?.config.speech.voice,
                   branding: brandingSummary(project.branding),
+                  canvas: exportSummary(
+                    project.exportOptions,
+                    project.info,
+                    settings?.config.style,
+                  ),
                   models: Object.fromEntries(
                     Object.entries(settings?.config.roles || {}).map(([name, role]) => [
                       name,
@@ -2620,6 +2759,10 @@ export default function App({ account, refreshAccount, logout, accountPending })
               }
               onSave={saveVideo}
               onReveal={reveal}
+              onExportOptions={() => {
+                setFullscreenOpen(false);
+                showExportOptions(true);
+              }}
             />
           )}
         </DialogContent>

@@ -11,6 +11,8 @@ const {
 const { FFMPEG, run, frame, pcm, wav, probe } = require('./media.cjs');
 const { schedule } = require('./script.cjs');
 const { findSource } = require('./sources.cjs');
+const { frameLayout, paintAdaptiveFrame } = require('./frame-layout.cjs');
+const { normalizeExportOptions } = require('./export-options.mjs');
 function drawText(ctx, s, x, y, size, color, family = 'Tutor Sans') {
   ctx.font = font(size);
   ctx.fillStyle = color;
@@ -82,6 +84,7 @@ async function render({
   script,
   audio,
   branding,
+  exportOptions,
   config,
   dir,
   signal,
@@ -91,14 +94,17 @@ async function render({
   ensureFonts();
   const style = config.style,
     FPS = style.fps,
-    W = style.width,
-    VW = W - 32,
-    VH = Math.round(Math.min(1400, (VW * info.height) / info.width) / 2) * 2,
-    CAPTION_H = 72,
-    H = 72 + VH + 128,
-    VX = 16,
-    VY = 72,
+    layout = frameLayout(info, style, exportOptions),
+    W = layout.width,
+    VW = layout.video_width,
+    VH = layout.video_height,
+    CAPTION_H = layout.caption.height,
+    H = layout.height,
+    VX = layout.video_x,
+    VY = layout.video_y,
     Y = VY + VH;
+  const caption = layout.caption,
+    timeline = layout.timeline;
   const BG = style.background,
     INK = style.ink,
     ACC = style.accent,
@@ -110,14 +116,9 @@ async function render({
     audio.map((a) => a?.duration || 0),
     style,
   );
-  plan.canvas = {
-    width: W,
-    height: H,
-    video_x: VX,
-    video_y: VY,
-    video_width: VW,
-    video_height: VH,
-  };
+  plan.canvas = layout;
+  plan.exportOptions = normalizeExportOptions(exportOptions);
+  plan.contentFit = 'contain';
   plan.source = source;
   if (sources) plan.sources = sources;
   plan.font = { family: FONT_FAMILY, asset: 'NotoSansCJKsc-Regular.otf' };
@@ -130,19 +131,23 @@ async function render({
   plan.chapterSegments = chapterSegments(
     plan.chapters_timed,
     plan.total_duration,
-    VW,
-    style.chapterGap ?? 12,
+    timeline.width,
+    timeline.gap,
   );
-  plan.timeline = {
-    x: VX,
-    y: H - 16,
-    height: 8,
-    gap: style.chapterGap ?? 12,
-    labelBaseline: Y + CAPTION_H + 26,
-  };
-  plan.caption = { y: Y + 2, height: CAPTION_H };
+  plan.timeline = timeline;
+  plan.caption = caption;
   const layoutCanvas = createCanvas(W, 72);
-  const header = brandLayout(layoutCanvas.getContext('2d'), style, W, VX);
+  const header = layout.legacy
+    ? {
+        ...brandLayout(layoutCanvas.getContext('2d'), style, W, VX),
+        timeY: 13,
+        timeHeight: 32,
+        timeFont: W < 1000 ? 15 : 18,
+        statusY: 45,
+        statusHeight: 18,
+        statusFont: 11,
+      }
+    : layout.timer;
   plan.models = config.roles;
   plan.speech = config.speech;
   const assets = path.join(dir, 'assets'),
@@ -150,11 +155,17 @@ async function render({
   await fs.mkdir(assets, { recursive: true });
   await fs.mkdir(segments, { recursive: true });
   const progressMask = path.join(assets, 'chapter-progress-mask.png');
-  await png(progressMask, VW, 8, (ctx) => {
+  await png(progressMask, timeline.width, timeline.height, (ctx) => {
     ctx.fillStyle = '#FFFFFF';
     for (const segment of plan.chapterSegments) {
       ctx.beginPath();
-      ctx.roundRect(segment.x, 0, segment.width, 8, Math.min(4, segment.width / 2));
+      ctx.roundRect(
+        segment.x,
+        0,
+        segment.width,
+        timeline.height,
+        Math.min(timeline.height / 2, segment.width / 2),
+      );
       ctx.fill();
     }
   });
@@ -165,7 +176,7 @@ async function render({
     VW +
     ':' +
     VH +
-    ':force_original_aspect_ratio=decrease,pad=' +
+    ':force_original_aspect_ratio=decrease:force_divisible_by=2,pad=' +
     VW +
     ':' +
     VH +
@@ -197,6 +208,10 @@ async function render({
         signal,
       );
     await png(overlay, W, H, (ctx) => {
+      if (!layout.legacy) {
+        paintAdaptiveFrame(ctx, layout, s, plan, style);
+        return;
+      }
       if (title) {
         ctx.fillStyle = BG;
         ctx.fillRect(0, 0, W, H);
@@ -240,7 +255,7 @@ async function render({
     s.captions = [];
     let pos = s.voice_lead;
     if (s.narration) {
-      const chunks = captionChunks(s.narration, W - 80),
+      const chunks = captionChunks(s.narration, caption.textWidth, caption.size),
         weights = chunks.map((c) => Math.max(1, c.replace(/[A-Za-z0-9./]+/g, 'aa').length)),
         sum = weights.reduce((a, b) => a + b, 0);
       for (let j = 0; j < chunks.length; j++) {
@@ -249,13 +264,21 @@ async function render({
         await png(file, W, CAPTION_H, (ctx) => {
           ctx.fillStyle = BG;
           ctx.fillRect(0, 0, W, CAPTION_H);
-          wrap(ctx, chunks[j], 27, W - 80)
+          if (!layout.legacy) {
+            ctx.fillStyle = '#E5DED2';
+            ctx.fillRect(layout.margin, 0, W - layout.margin * 2, Math.max(1, layout.unit));
+          }
+          wrap(ctx, chunks[j], caption.size, caption.textWidth)
             .slice(0, 2)
             .forEach((line, k) => {
-              ctx.font = font(27);
+              ctx.font = font(caption.size);
               ctx.textBaseline = 'alphabetic';
               ctx.fillStyle = INK;
-              ctx.fillText(line, (W - ctx.measureText(line).width) / 2, 31 + k * 32);
+              ctx.fillText(
+                line,
+                (W - ctx.measureText(line).width) / 2,
+                caption.baseline + k * caption.lineHeight,
+              );
             });
         });
         s.captions.push({ file, start: pos, end: pos + span, text: chunks[j] });
@@ -273,13 +296,17 @@ async function render({
       }
     }
     const status = path.join(assets, 'status-' + i + '.png');
-    await png(status, header.timeWidth, 18, (ctx) => {
+    await png(status, header.timeWidth, header.statusHeight, (ctx) => {
       ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, header.timeWidth, 18);
-      ctx.font = font(11);
+      ctx.fillRect(0, 0, header.timeWidth, header.statusHeight);
+      ctx.font = font(header.statusFont);
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = MUTED;
-      ctx.fillText('无声观察', header.timeWidth - ctx.measureText('无声观察').width, 12);
+      ctx.fillText(
+        '无声观察',
+        header.timeWidth - ctx.measureText('无声观察').width,
+        header.statusFont + 1,
+      );
     });
     const args = ['-hide_banner', '-v', 'error', '-y', '-filter_complex_threads', '1'];
     let vf = '';
@@ -358,6 +385,10 @@ async function render({
       else vf = '[0:v]setpts=PTS-STARTPTS,fps=' + FPS + '[content];';
       vf += '[content]' + fit + ',tpad=stop_mode=clone:stop_duration=' + dur + '[base];';
     }
+    if (!title)
+      vf =
+        '[0:v]scale=trunc(iw*sar/2)*2:ih,setsar=1[squarepixels];' +
+        vf.replaceAll('[0:v]', '[squarepixels]');
     args.push('-loop', '1', '-framerate', String(FPS), '-i', overlay);
     vf += '[base][2:v]overlay=0:0[decor];';
     let prev = 'decor',
@@ -372,7 +403,7 @@ async function render({
         '][' +
         idx +
         ':v]overlay=0:' +
-        (Y + 2) +
+        caption.y +
         ":enable='between(t," +
         c.start +
         ',' +
@@ -391,7 +422,9 @@ async function render({
       idx +
       ':v]overlay=' +
       header.timeX +
-      ":45:enable='gte(t," +
+      ':' +
+      header.statusY +
+      ":enable='gte(t," +
       (s.voice_lead + s.voice_duration) +
       ")'[quiet];";
     args.push('-loop', '1', '-framerate', String(FPS), '-i', progressMask);
@@ -423,8 +456,10 @@ async function render({
       'color=c=' +
       ACC +
       ':s=' +
-      VW +
-      'x8:r=' +
+      timeline.width +
+      'x' +
+      timeline.height +
+      ':r=' +
       FPS +
       ':d=' +
       dur +
@@ -433,9 +468,9 @@ async function render({
       ":v]format=rgba,alphaextract,geq=lum='lum(X,Y)*clip(" +
       visible +
       ",0,1)'[progressalpha];[progresscolor][progressalpha]alphamerge[progress];[quiet][progress]overlay=" +
-      VX +
+      timeline.x +
       ':' +
-      (H - 16) +
+      timeline.y +
       ':shortest=1[comp];';
     vf +=
       s.transition === 'fade'
@@ -553,15 +588,15 @@ async function render({
     await png(
       path.join(timer, String(t).padStart(3, '0') + '.png'),
       header.timeWidth,
-      32,
+      header.timeHeight,
       (ctx) => {
         ctx.fillStyle = BG;
-        ctx.fillRect(0, 0, header.timeWidth, 32);
+        ctx.fillRect(0, 0, header.timeWidth, header.timeHeight);
         const label = clock(t) + ' / ' + clock(Math.round(plan.total_duration));
-        ctx.font = font(W < 1000 ? 15 : 18);
+        ctx.font = font(header.timeFont);
         ctx.fillStyle = MUTED;
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(label, header.timeWidth - ctx.measureText(label).width, 26);
+        ctx.fillText(label, header.timeWidth - ctx.measureText(label).width, header.timeFont + 7);
       },
     );
   await run(
@@ -582,7 +617,13 @@ async function render({
       '-i',
       path.join(dir, 'narration.wav'),
       '-filter_complex',
-      '[0:v]fps=' + FPS + '[x];[x][1:v]overlay=' + header.timeX + ':13:eof_action=repeat[v]',
+      '[0:v]fps=' +
+        FPS +
+        '[x];[x][1:v]overlay=' +
+        header.timeX +
+        ':' +
+        header.timeY +
+        ':eof_action=repeat[v]',
       '-map',
       '[v]',
       '-map',
@@ -656,7 +697,7 @@ async function render({
       [path.join(segments, 'segment-' + i + '.mp4'), local],
       [output, s.offset + local],
     ].entries()) {
-      const crop = 'crop=' + Math.min(W - 220, 900) + ':40:16:4';
+      const crop = 'crop=' + Math.floor(Math.min(header.timeX - 24, 900)) + ':40:16:4';
       const sampleArgs = [
         '-hide_banner',
         '-v',

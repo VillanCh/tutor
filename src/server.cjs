@@ -193,12 +193,13 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         const d = await readJson(req);
         const { normalizeBranding, brandingPreview } = require('./branding.cjs');
         const watermark = normalizeBranding({ watermark: d.watermark }).watermark;
-        let background, info, heading, caption;
+        let background, info, heading, caption, exportOptions;
         if (d.projectId) {
           const project = store.get(d.projectId);
           const scene = project.script?.scenes.find((item) => item.kind !== 'title');
           const source = findSource(project, scene?.source_id);
           info = project.info;
+          exportOptions = project.exportOptions;
           heading = scene?.heading;
           caption = scene?.narration;
           const time = Math.max(
@@ -232,7 +233,58 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             info,
             heading,
             caption,
+            exportOptions,
             style: store.config.style,
+          }),
+        );
+      }
+      if (url.pathname === '/api/export/preview' && req.method === 'POST') {
+        const d = await readJson(req);
+        const options = require('./export-options.mjs').normalizeExportOptions(d.exportOptions);
+        if (!['content', 'title'].includes(d.kind || 'content')) throw Error('预览类型无效');
+        const p = store.get(d.projectId);
+        const title = d.kind === 'title';
+        const scene =
+          p.script?.scenes.find((s) => s.id === d.sceneId && (s.kind === 'title') === title) ||
+          p.script?.scenes.find((s) => (s.kind === 'title') === title);
+        const source = findSource(p, scene?.source_id);
+        const time = Math.max(
+          0,
+          Math.min(
+            scene?.freeze_at ?? scene?.hold_at ?? scene?.source_start ?? 0,
+            source.info.duration - 0.04,
+          ),
+        );
+        const background = path.join(
+          store.dir(p.id),
+          'export-preview-' + source.id + '-' + Math.round(time * 1000) + '.png',
+        );
+        if (!title && !previewFrames.has(background)) {
+          const task = (async () => {
+            try {
+              await fs.access(background);
+            } catch {
+              await require('./media.cjs').frame(source.path, time, background);
+            }
+          })();
+          previewFrames.set(background, task);
+          task.catch(() => previewFrames.delete(background));
+        }
+        if (!title) await previewFrames.get(background);
+        return json(
+          await require('./frame-layout.cjs').framePreview({
+            info: p.info,
+            style: store.config.style,
+            exportOptions: options,
+            background: title ? undefined : background,
+            title,
+            scene: {
+              ...scene,
+              heading: scene?.heading || p.title,
+              narration: scene?.narration || '',
+            },
+            script: p.script,
+            watermark: p.branding?.watermark,
           }),
         );
       }
@@ -338,9 +390,15 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             return json(store.public(await engine.saveScript(p.id, d.script)));
           if (action === 'branding')
             return json(store.public(await engine.saveBranding(p.id, d.branding, d.revision)));
+          if (action === 'export-settings')
+            return json(
+              store.public(await engine.saveExportOptions(p.id, d.exportOptions, d.revision)),
+            );
           if (action === 'approve')
             return json(
-              store.public(await engine.confirm(p.id, d.hash, d.revision, d.brandingHash)),
+              store.public(
+                await engine.confirm(p.id, d.hash, d.revision, d.brandingHash, d.exportHash),
+              ),
             );
           if (action === 'resolve-issue')
             return json(store.public(await engine.resolveIssue(p.id, d.index, d.hash)));

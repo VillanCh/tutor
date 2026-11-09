@@ -361,6 +361,30 @@ app.whenReady().then(async () => {
       await audit('branding-logo-' + suffix);
       await reachable('.branding-dialog .dialog-footer button:last-child');
       await closeDialog();
+      await click('button[aria-label="导出比例与画布"]');
+      await waitFor('!!document.querySelector(".export-dialog")', 'export canvas');
+      await click('[data-export-aspect="16:9"]');
+      await waitFor(
+        'document.querySelector(".export-preview-screen")?.getAttribute("aria-busy")==="false"',
+        'landscape canvas',
+      );
+      await audit('export-landscape-' + suffix, true);
+      await click('[data-export-aspect="9:16"]');
+      await waitFor(
+        'document.querySelector(".export-preview-screen")?.getAttribute("aria-busy")==="false"',
+        'portrait canvas',
+      );
+      await audit('export-portrait-' + suffix, true);
+      await click('.export-preview-tabs button:last-child');
+      await waitFor(
+        'document.querySelector(".export-preview-screen")?.getAttribute("aria-busy")==="false"',
+        'transition canvas',
+      );
+      await audit('export-transition-' + suffix);
+      await click('[data-export-aspect="1:1"]');
+      await audit('export-square-' + suffix);
+      await reachable('.export-dialog .dialog-footer button:last-child');
+      await closeDialog();
       await click('.context-card button');
       await audit('knowledge-' + suffix);
       await reachable('.knowledge-dialog .dialog-footer button:last-child');

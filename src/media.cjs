@@ -64,10 +64,16 @@ async function probe(file, signal) {
     v?.tags?.rotate ?? v?.side_data_list?.find((item) => item.rotation != null)?.rotation ?? 0,
   );
   const portraitRotation = Math.abs(Math.round(rotation)) % 180 === 90;
+  const [sarWidth, sarHeight] = String(v?.sample_aspect_ratio || '1:1')
+    .split(':')
+    .map(Number);
+  const sampleAspectRatio = sarWidth > 0 && sarHeight > 0 ? sarWidth / sarHeight : 1;
+  const displayWidth = v?.width * sampleAspectRatio;
   return {
     duration: Number(info.format.duration),
-    width: portraitRotation ? v?.height : v?.width,
-    height: portraitRotation ? v?.width : v?.height,
+    width: portraitRotation ? v?.height : displayWidth,
+    height: portraitRotation ? displayWidth : v?.height,
+    sampleAspectRatio,
     rotation,
     audio: Boolean(a),
     sampleRate: a?.sample_rate ? Number(a.sample_rate) : null,
@@ -90,7 +96,7 @@ async function analysisVideo(source, target, signal, progress) {
       '-map',
       '0:a?',
       '-vf',
-      "scale='min(960,iw)':-2,fps=2",
+      "scale=trunc(iw*sar/2)*2:ih,setsar=1,scale='min(960,iw)':-2,fps=2",
       '-c:v',
       'libx264',
       '-crf',
@@ -123,6 +129,8 @@ async function frame(source, seconds, target, signal) {
       String(seconds),
       '-i',
       source,
+      '-vf',
+      'scale=trunc(iw*sar/2)*2:ih,setsar=1',
       '-frames:v',
       '1',
       target,

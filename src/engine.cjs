@@ -419,7 +419,22 @@ class Engine extends EventEmitter {
     this.publish(p, { stage: '广告与水印已保存，请重新审核制作' });
     return p;
   }
-  async confirm(id, hash, revision, expectedBrandingHash) {
+  async saveExportOptions(id, value, revision) {
+    const p = this.store.get(id);
+    if (p.job) throw Error('请等待当前任务结束后调整导出比例');
+    if (revision !== p.revision) throw Error('项目已更新，请重新打开导出比例设置');
+    const next = require('./export-options.mjs').normalizeExportOptions(value);
+    const { exportHash } = require('./frame-layout.cjs');
+    if (exportHash(next) === exportHash(p.exportOptions)) return p;
+    p.exportOptions = next;
+    p.revision += 1;
+    p.approval = null;
+    p.status = p.script ? 'review' : 'draft';
+    await this.store.save(p);
+    this.publish(p, { stage: '导出画布已保存，请重新审核制作' });
+    return p;
+  }
+  async confirm(id, hash, revision, expectedBrandingHash, expectedExportHash) {
     const p = this.store.get(id);
     if (revision != null && revision !== p.revision) throw Error('项目已更新，请重新审核当前版本');
     const { brandingHash } = require('./branding.cjs');
@@ -429,6 +444,13 @@ class Engine extends EventEmitter {
       (expectedBrandingHash != null || currentBrandingHash !== brandingHash())
     )
       throw Error('广告或水印已更新，请重新打开审核窗口核对');
+    const { exportHash } = require('./frame-layout.cjs');
+    const currentExportHash = exportHash(p.exportOptions);
+    if (
+      expectedExportHash !== currentExportHash &&
+      (expectedExportHash != null || currentExportHash !== exportHash())
+    )
+      throw Error('导出画布已更新，请重新打开审核窗口核对');
     approve(p, hash);
     await this.store.save(p);
     this.publish(p, { stage: '脚本已人工确认' });
@@ -521,6 +543,7 @@ class Engine extends EventEmitter {
         script: p.script,
         audio,
         branding: p.branding,
+        exportOptions: p.exportOptions,
         config,
         dir,
         signal,

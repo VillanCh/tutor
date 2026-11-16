@@ -13,6 +13,7 @@ const { TestAccount, confirmModels } = require('./helpers/account.cjs');
 const { normalizeScript, scriptHash, approve, requireApproval } = require('../src/script.cjs');
 const { FFMPEG, run, probe, frame, wav } = require('../src/media.cjs');
 const { render, captionChunks } = require('../src/render.cjs');
+const { chapterSegments } = require('../src/tutorial-brand.cjs');
 const preset = (id) => LAYOUT_PRESETS.find((p) => p.id === id).value;
 
 test('layout settings bind approval while legacy layouts keep their canonical hash', () => {
@@ -87,6 +88,13 @@ test('compact, spacious and clean layouts preserve source aspect and separate al
     [0, 0, 1440, 810],
   );
   assert.equal(clean.height, 810);
+  const denseChapters = Array.from({ length: 60 }, (_, i) => ({ start: i, end: i + 1 }));
+  for (const width of [480, 720, 1440]) {
+    const segments = chapterSegments(denseChapters, 60, width, 32);
+    assert(segments.every((segment) => segment.width > 0 && segment.x >= 0));
+    const last = segments.at(-1);
+    assert(last.x + last.width <= width + 0.001);
+  }
   const text = '这是一段较长的中文字幕，用来检查一行、两行和三行配置都能完整保留所有文字。'.repeat(
     5,
   );

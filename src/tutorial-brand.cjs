@@ -80,6 +80,7 @@ function paintHeader(ctx, layout, scene, plan, style, margin) {
 }
 
 function chapterSegments(chapters, total, width, gap = 12) {
+  gap = Math.min(gap, (width / Math.max(1, chapters.length)) * 0.35);
   const usable = width - gap * (chapters.length - 1);
   return chapters.map((chapter, index) => ({
     ...chapter,

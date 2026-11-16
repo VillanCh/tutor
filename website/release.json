@@ -1,75 +1,75 @@
 {
-  "version": "0.6.1",
-  "url": "https://github.com/VillanCh/tutor/releases/tag/v0.6.1",
-  "publishedAt": "2026-11-16T09:13:05Z",
+  "version": "0.6.2",
+  "url": "https://github.com/VillanCh/tutor/releases/tag/v0.6.2",
+  "publishedAt": "2026-11-16T10:32:53Z",
   "assets": [
     {
       "name": "ffmpeg-4.0.2-source.tar.gz",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/ffmpeg-4.0.2-source.tar.gz"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/ffmpeg-4.0.2-source.tar.gz"
     },
     {
       "name": "ffmpeg-6.1.1-source.tar.xz",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/ffmpeg-6.1.1-source.tar.xz"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/ffmpeg-6.1.1-source.tar.xz"
     },
     {
       "name": "SHA256SUMS-macOS-arm64.txt",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/SHA256SUMS-macOS-arm64.txt"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/SHA256SUMS-macOS-arm64.txt"
     },
     {
       "name": "SHA256SUMS-macOS-x64.txt",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/SHA256SUMS-macOS-x64.txt"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/SHA256SUMS-macOS-x64.txt"
     },
     {
       "name": "SHA256SUMS-windows-x64.txt",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/SHA256SUMS-windows-x64.txt"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/SHA256SUMS-windows-x64.txt"
     },
     {
       "name": "SHA256SUMS.txt",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/SHA256SUMS.txt"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/SHA256SUMS.txt"
     },
     {
-      "name": "Tutor-0.6.1-macOS-arm64.dmg",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-macOS-arm64.dmg"
+      "name": "Tutor-0.6.2-layout-templates.zip",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-layout-templates.zip"
     },
     {
-      "name": "Tutor-0.6.1-macOS-arm64.zip",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-macOS-arm64.zip"
+      "name": "Tutor-0.6.2-macOS-arm64.dmg",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-macOS-arm64.dmg"
     },
     {
-      "name": "Tutor-0.6.1-macOS-x64.dmg",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-macOS-x64.dmg"
+      "name": "Tutor-0.6.2-macOS-arm64.zip",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-macOS-arm64.zip"
     },
     {
-      "name": "Tutor-0.6.1-macOS-x64.zip",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-macOS-x64.zip"
+      "name": "Tutor-0.6.2-macOS-x64.dmg",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-macOS-x64.dmg"
     },
     {
-      "name": "Tutor-0.6.1-video-frame-templates.zip",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-video-frame-templates.zip"
+      "name": "Tutor-0.6.2-macOS-x64.zip",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-macOS-x64.zip"
     },
     {
-      "name": "Tutor-0.6.1-windows-x64-portable.zip",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-windows-x64-portable.zip"
+      "name": "Tutor-0.6.2-windows-x64-portable.zip",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-windows-x64-portable.zip"
     },
     {
-      "name": "Tutor-0.6.1-windows-x64-setup.exe",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/Tutor-0.6.1-windows-x64-setup.exe"
+      "name": "Tutor-0.6.2-windows-x64-setup.exe",
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/Tutor-0.6.2-windows-x64-setup.exe"
     },
     {
       "name": "verification-darwin-arm64.json",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/verification-darwin-arm64.json"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/verification-darwin-arm64.json"
     },
     {
       "name": "verification-darwin-x64.json",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/verification-darwin-x64.json"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/verification-darwin-x64.json"
     },
     {
       "name": "verification-win32-x64.json",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/verification-win32-x64.json"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/verification-win32-x64.json"
     },
     {
       "name": "x264-31e19f92f00c7003fa115047ce50978bc98c3a0d-source.tar.gz",
-      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.1/x264-31e19f92f00c7003fa115047ce50978bc98c3a0d-source.tar.gz"
+      "url": "https://github.com/VillanCh/tutor/releases/download/v0.6.2/x264-31e19f92f00c7003fa115047ce50978bc98c3a0d-source.tar.gz"
     }
   ]
 }

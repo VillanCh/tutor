@@ -119,17 +119,22 @@ app
     ipcMain.handle('pick-branding', async (event, kind) => {
       local(event);
       await account.requireLogin();
-      if (!['intro', 'outro', 'watermark'].includes(kind)) throw Error('素材类型无效');
+      if (!['intro', 'outro', 'watermark', 'frame'].includes(kind)) throw Error('素材类型无效');
       const r = await dialog.showOpenDialog(window, {
-        title: { intro: '选择片头广告', outro: '选择片尾广告', watermark: '选择水印 Logo' }[kind],
+        title: {
+          intro: '选择片头广告',
+          outro: '选择片尾广告',
+          watermark: '选择水印 Logo',
+          frame: '选择视频框架背景',
+        }[kind],
         properties: ['openFile'],
         filters: [
           {
-            name: kind === 'watermark' ? 'Logo 图片' : '广告视频或图片',
-            extensions:
-              kind === 'watermark'
-                ? ['png', 'jpg', 'jpeg', 'webp']
-                : ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp'],
+            name:
+              kind === 'frame' ? '背景图片' : kind === 'watermark' ? 'Logo 图片' : '广告视频或图片',
+            extensions: ['watermark', 'frame'].includes(kind)
+              ? ['png', 'jpg', 'jpeg', 'webp']
+              : ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp'],
           },
         ],
       });

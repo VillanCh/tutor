@@ -3,9 +3,28 @@ export const WATERMARK_STYLES = {
   corner: { opacity: 35, width: 14, density: 'balanced', tone: 'light' },
 };
 
+export const FRAME_PRESETS = {
+  midnight: '深海微光',
+  ember: '暖夜余晖',
+  mist: '雾蓝留白',
+  porcelain: '暖瓷柔光',
+  paper: '经典米白',
+  custom: '自定义图片',
+};
+export const FRAME_DEFAULTS = {
+  enabled: true,
+  preset: 'midnight',
+  path: '',
+  blur: 24,
+  dim: 18,
+  saturation: 65,
+  contrast: 'auto',
+};
+
 export function brandingDefaults(value = {}) {
   const legacyWatermark = value?.watermark && value.watermark.layout == null;
   return {
+    frame: { ...FRAME_DEFAULTS, ...value?.frame },
     intro: { enabled: false, path: '', duration: 5, muted: false, ...value?.intro },
     outro: { enabled: false, path: '', duration: 5, muted: false, ...value?.outro },
     watermark: {
@@ -59,6 +78,7 @@ export function brandingSummary(value) {
   const b = brandingDefaults(value);
   return (
     [
+      b.frame.enabled ? (b.frame.name || FRAME_PRESETS[b.frame.preset]) + '框架' : '',
       b.intro.enabled ? '片头广告' : '',
       b.watermark.enabled
         ? (b.watermark.layout === 'tiled' ? '全屏平铺' : '全程') +

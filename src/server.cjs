@@ -123,6 +123,47 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(await store.markGuideSeen(d.version));
       }
       if (parts[0] === 'api') await account.requireLogin();
+      if (url.pathname === '/api/frame-templates') {
+        const templates = require('./frame-templates.cjs');
+        if (req.method === 'GET') return json(await templates.listTemplates(store.root));
+        if (req.method === 'POST') {
+          const d = await readJson(req);
+          if (d.action === 'delete') {
+            await templates.deleteTemplate(store.root, d.id);
+            return json({ deleted: true });
+          }
+          return json(await templates.saveTemplate(store.root, d.name, d.frame));
+        }
+      }
+      if (url.pathname === '/api/uploads/frame-background' && req.method === 'POST') {
+        const ext = path.extname(url.searchParams.get('name') || '').toLowerCase();
+        if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext))
+          throw Error('背景支持 PNG、JPG、WebP 图片');
+        const limit = 20 * 1024 * 1024;
+        if (Number(req.headers['content-length']) > limit) throw Error('背景图片不能超过 20 MB');
+        const dir = path.join(store.root, 'uploads');
+        await fs.mkdir(dir, { recursive: true });
+        const file = path.join(dir, crypto.randomUUID() + ext);
+        const handle = await fs.open(file, 'wx');
+        let size = 0;
+        try {
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > limit) throw Error('背景图片不能超过 20 MB');
+            await handle.writeFile(chunk);
+          }
+          await handle.close();
+          await require('./frame-background.cjs').backgroundImage(file);
+          return json({
+            path: file,
+            name: path.basename(url.searchParams.get('name') || '背景图片'),
+          });
+        } catch (error) {
+          await handle.close().catch(() => {});
+          await fs.rm(file, { force: true });
+          throw error;
+        }
+      }
       if (url.pathname === '/api/uploads/video' && req.method === 'POST') {
         const ext = path.extname(url.searchParams.get('name') || '').toLowerCase();
         if (!VIDEO_EXTENSIONS.includes(ext)) throw Error('视频仅支持 MP4、MOV、MKV、WebM 和 AVI');
@@ -192,13 +233,21 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
       if (url.pathname === '/api/branding/preview' && req.method === 'POST') {
         const d = await readJson(req);
         const { normalizeBranding, brandingPreview } = require('./branding.cjs');
-        const watermark = normalizeBranding({ watermark: d.watermark }).watermark;
-        let background, info, heading, caption, exportOptions;
+        const projectBranding = d.projectId ? store.get(d.projectId).branding : null;
+        const { watermark, frame } = normalizeBranding({
+          watermark: d.watermark,
+          frame: d.frame ?? projectBranding?.frame,
+        });
+        let background, info, heading, caption, exportOptions, script, selectedScene;
         if (d.projectId) {
           const project = store.get(d.projectId);
-          const scene = project.script?.scenes.find((item) => item.kind !== 'title');
+          const scene = project.script?.scenes.find(
+            (item) => (item.kind === 'title') === (d.kind === 'title'),
+          );
           const source = findSource(project, scene?.source_id);
           info = project.info;
+          script = project.script;
+          selectedScene = scene;
           exportOptions = project.exportOptions;
           heading = scene?.heading;
           caption = scene?.narration;
@@ -229,11 +278,15 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(
           await brandingPreview({
             watermark,
+            frame,
+            title: d.kind === 'title',
             background,
             info,
             heading,
             caption,
             exportOptions,
+            script,
+            selectedScene,
             style: store.config.style,
           }),
         );
@@ -285,6 +338,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             },
             script: p.script,
             watermark: p.branding?.watermark,
+            frame: p.branding?.frame,
           }),
         );
       }

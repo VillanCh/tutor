@@ -2,23 +2,17 @@ const fs = require('node:fs/promises'),
   path = require('node:path');
 const { createCanvas } = require('@napi-rs/canvas');
 const { font, ensureFonts, FONT_FAMILY, BRAND_FAMILY } = require('./fonts.cjs');
-const {
-  brandLayout,
-  paintHeader,
-  chapterSegments,
-  paintTimeline,
-} = require('./tutorial-brand.cjs');
+const { brandLayout, chapterSegments } = require('./tutorial-brand.cjs');
 const { FFMPEG, run, frame, pcm, wav, probe } = require('./media.cjs');
 const { schedule } = require('./script.cjs');
 const { findSource } = require('./sources.cjs');
-const { frameLayout, paintAdaptiveFrame } = require('./frame-layout.cjs');
+const {
+  frameLayout,
+  paintAdaptiveFrame,
+  paintLegacyFrame,
+  containRect,
+} = require('./frame-layout.cjs');
 const { normalizeExportOptions } = require('./export-options.mjs');
-function drawText(ctx, s, x, y, size, color, family = 'Tutor Sans') {
-  ctx.font = font(size);
-  ctx.fillStyle = color;
-  ctx.textBaseline = 'top';
-  ctx.fillText(s, x, y);
-}
 function wrap(ctx, s, size, width, family = 'Tutor Sans') {
   ctx.font = font(size);
   const lines = [];
@@ -92,6 +86,7 @@ async function render({
 }) {
   const project = { source, sources, info };
   ensureFonts();
+  const baseStyle = config.style;
   const style = config.style,
     FPS = style.fps,
     layout = frameLayout(info, style, exportOptions),
@@ -101,16 +96,18 @@ async function render({
     CAPTION_H = layout.caption.height,
     H = layout.height,
     VX = layout.video_x,
-    VY = layout.video_y,
-    Y = VY + VH;
+    VY = layout.video_y;
   const caption = layout.caption,
     timeline = layout.timeline;
+  const backdrop = await require('./frame-background.cjs').prepareFrameBackground(
+    layout,
+    style,
+    branding?.frame,
+  );
+  const frameStyle = require('./frame-background.cjs').frameStyle;
   const BG = style.background,
-    INK = style.ink,
-    ACC = style.accent,
-    TERRA = style.secondary_accent,
-    MUTED = '#81786D',
-    LINE = '#DED6C9';
+    ACC = backdrop.bottom.accent,
+    MUTED = backdrop.top.muted;
   const plan = schedule(
     script,
     audio.map((a) => a?.duration || 0),
@@ -119,6 +116,7 @@ async function render({
   plan.canvas = layout;
   plan.exportOptions = normalizeExportOptions(exportOptions);
   plan.contentFit = 'contain';
+  plan.frame = { options: backdrop.options, top: backdrop.top, bottom: backdrop.bottom };
   plan.source = source;
   if (sources) plan.sources = sources;
   plan.font = { family: FONT_FAMILY, asset: 'NotoSansCJKsc-Regular.otf' };
@@ -207,51 +205,13 @@ async function render({
         hold,
         signal,
       );
+    const sceneStyle = frameStyle(baseStyle, backdrop, title);
+    if (!title)
+      sceneStyle.videoRect = containRect(input.info, { x: VX, y: VY, width: VW, height: VH });
     await png(overlay, W, H, (ctx) => {
-      if (!layout.legacy) {
-        paintAdaptiveFrame(ctx, layout, s, plan, style);
-        return;
-      }
-      if (title) {
-        ctx.fillStyle = BG;
-        ctx.fillRect(0, 0, W, H);
-        ctx.strokeStyle = LINE;
-        ctx.lineWidth = 2;
-        for (let k = 0; k < 6; k++) {
-          ctx.beginPath();
-          ctx.ellipse(W * 0.92 + k * 34, H * 0.4, 350 + k * 34, H * 0.7, 0, 0.7, 4.5);
-          ctx.stroke();
-        }
-        drawText(ctx, 'TUTOR / PRACTICAL GUIDE', 74, H * 0.21, 21, TERRA, 'Tutor Mono');
-        drawText(
-          ctx,
-          String(s.chapter + 1).padStart(2, '0') + '.',
-          70,
-          H * 0.285,
-          90,
-          ACC,
-          'Tutor Mono',
-        );
-        wrap(ctx, s.heading, 82, W - 140, 'Tutor Serif')
-          .slice(0, 3)
-          .forEach((l, n) => drawText(ctx, l, 70, H * 0.43 + n * 102, 82, INK, 'Tutor Serif'));
-        drawText(ctx, script.title, 76, H * 0.77, 27, MUTED);
-      } else {
-        ctx.fillStyle = BG;
-        ctx.fillRect(0, 0, W, VY);
-        ctx.fillRect(0, VY, 16, VH);
-        ctx.fillRect(W - 16, VY, 16, VH);
-        ctx.fillRect(0, Y, W, H - Y);
-        ctx.strokeStyle = LINE;
-        ctx.strokeRect(VX - 1, VY - 1, VW + 1, VH + 1);
-      }
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, W, VY);
-      paintHeader(ctx, header, s, plan, style, VX);
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, Y + 2, W, H - Y - 2);
-      paintTimeline(ctx, plan.chapterSegments, s, style, VX, H, plan.timeline.labelBaseline);
+      (layout.legacy ? paintLegacyFrame : paintAdaptiveFrame)(ctx, layout, s, plan, sceneStyle);
     });
+
     s.captions = [];
     let pos = s.voice_lead;
     if (s.narration) {
@@ -262,10 +222,8 @@ async function render({
         const span = (s.voice_duration * weights[j]) / sum,
           file = path.join(assets, 'caption-' + i + '-' + j + '.png');
         await png(file, W, CAPTION_H, (ctx) => {
-          ctx.fillStyle = BG;
-          ctx.fillRect(0, 0, W, CAPTION_H);
           if (!layout.legacy) {
-            ctx.fillStyle = '#E5DED2';
+            ctx.fillStyle = backdrop.bottom.line;
             ctx.fillRect(layout.margin, 0, W - layout.margin * 2, Math.max(1, layout.unit));
           }
           wrap(ctx, chunks[j], caption.size, caption.textWidth)
@@ -273,7 +231,7 @@ async function render({
             .forEach((line, k) => {
               ctx.font = font(caption.size);
               ctx.textBaseline = 'alphabetic';
-              ctx.fillStyle = INK;
+              ctx.fillStyle = backdrop.bottom.ink;
               ctx.fillText(
                 line,
                 (W - ctx.measureText(line).width) / 2,
@@ -297,8 +255,6 @@ async function render({
     }
     const status = path.join(assets, 'status-' + i + '.png');
     await png(status, header.timeWidth, header.statusHeight, (ctx) => {
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, header.timeWidth, header.statusHeight);
       ctx.font = font(header.statusFont);
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = MUTED;
@@ -590,8 +546,6 @@ async function render({
       header.timeWidth,
       header.timeHeight,
       (ctx) => {
-        ctx.fillStyle = BG;
-        ctx.fillRect(0, 0, header.timeWidth, header.timeHeight);
         const label = clock(t) + ' / ' + clock(Math.round(plan.total_duration));
         ctx.font = font(header.timeFont);
         ctx.fillStyle = MUTED;

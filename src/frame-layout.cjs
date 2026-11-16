@@ -10,6 +10,12 @@ const {
   ellipsis,
 } = require('./tutorial-brand.cjs');
 
+const {
+  prepareFrameBackground,
+  frameStyle,
+  paintFrameBackground,
+} = require('./frame-background.cjs');
+
 const even = (value) => Math.max(2, Math.round(value / 2) * 2);
 function exportHash(value) {
   return crypto
@@ -155,15 +161,16 @@ function fittedText(ctx, text, box, size, color, maxSize = size) {
 }
 
 function drawAdaptiveTimeline(ctx, layout, segments, scene, style) {
+  style = { ...style, ...style.footer };
   const { unit: u, timeline: t } = layout;
   ctx.textBaseline = 'alphabetic';
   for (const segment of segments) {
     const current = segment.index === scene.chapter;
     ctx.font = font(Math.round(19 * u));
-    ctx.fillStyle = current ? style.ink : '#81786D';
+    ctx.fillStyle = current ? style.ink : style.muted || '#81786D';
     const label = String(segment.index + 1).padStart(2, '0') + '  ' + segment.title;
     ctx.fillText(ellipsis(ctx, label, segment.width - 2), t.x + segment.x, t.labelBaseline);
-    ctx.fillStyle = '#DED6C9';
+    ctx.fillStyle = style.line || '#DED6C9';
     ctx.beginPath();
     ctx.roundRect(
       t.x + segment.x,
@@ -178,8 +185,7 @@ function drawAdaptiveTimeline(ctx, layout, segments, scene, style) {
 
 function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
   const { width: W, height: H, margin: m, unit: u } = layout;
-  ctx.fillStyle = style.background;
-  ctx.fillRect(0, 0, W, H);
+  paintFrameBackground(ctx, style, W, H);
   const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
   if (brand.enabled) {
     ctx.font = brandFont(Math.round(38 * u));
@@ -190,12 +196,13 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
     ctx.fillStyle = style.accent;
     ctx.fillRect(m + ctx.measureText(name).width + 9 * u, 38 * u, 7 * u, 7 * u);
     ctx.font = font(Math.round(12 * u));
-    ctx.fillStyle = '#81786D';
+    ctx.fillStyle = style.muted || '#81786D';
     ctx.fillText(ellipsis(ctx, brand.tagline, W - 2 * m - 230 * u), m + u, 76 * u);
   }
   if (scene.kind === 'title') {
+    style = { ...style, ...style.titleTheme };
     ctx.save();
-    ctx.strokeStyle = '#E6DED2';
+    ctx.strokeStyle = style.line || '#E6DED2';
     ctx.lineWidth = Math.max(1, 1.4 * u);
     for (let k = 0; k < 5; k++) {
       ctx.beginPath();
@@ -218,7 +225,7 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
       style.ink,
     );
     ctx.font = font(Math.round(23 * u));
-    ctx.fillStyle = '#81786D';
+    ctx.fillStyle = style.muted || '#81786D';
     ctx.fillText(ellipsis(ctx, plan.title || '', W - 2 * m), m, layout.caption.y - 58 * u);
   } else {
     if (layout.stacked) {
@@ -252,15 +259,21 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
       const x = m + (brand.enabled ? 230 * u : 0);
       ctx.fillText(ellipsis(ctx, scene.heading, layout.timer.timeX - x - 28 * u), x, 38 * u);
       ctx.font = font(Math.round(15 * u));
-      ctx.fillStyle = '#81786D';
+      ctx.fillStyle = style.muted || '#81786D';
       ctx.fillText(
         ellipsis(ctx, plan.chapters[scene.chapter] || '', layout.timer.timeX - x - 28 * u),
         x,
         75 * u,
       );
     }
-    ctx.clearRect(layout.video_x, layout.video_y, layout.video_width, layout.video_height);
-    ctx.strokeStyle = '#D9D0C1';
+    const rect = style.videoRect || {
+      x: layout.video_x,
+      y: layout.video_y,
+      width: layout.video_width,
+      height: layout.video_height,
+    };
+    ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+    ctx.strokeStyle = style.line || '#D9D0C1';
     ctx.lineWidth = 2 * u;
     ctx.strokeRect(
       layout.video_x - u,
@@ -269,9 +282,46 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
       layout.video_height + 2 * u,
     );
   }
-  ctx.fillStyle = '#E5DED2';
+  ctx.fillStyle = style.footer?.line || '#E5DED2';
   ctx.fillRect(m, layout.caption.y, W - 2 * m, Math.max(1, u));
   drawAdaptiveTimeline(ctx, layout, plan.chapterSegments, scene, style);
+}
+
+function paintLegacyFrame(ctx, layout, scene, plan, style) {
+  const { width: W, height: H, video_x: x, video_y: y, video_width: vw, video_height: vh } = layout;
+  paintFrameBackground(ctx, style, W, H);
+  if (scene.kind === 'title') {
+    const theme = style.titleTheme || style;
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 6; k++) {
+      ctx.beginPath();
+      ctx.ellipse(W * 0.92 + k * 34, H * 0.4, 350 + k * 34, H * 0.7, 0, 0.7, 4.5);
+      ctx.stroke();
+    }
+    ctx.textBaseline = 'top';
+    ctx.font = font(21);
+    ctx.fillStyle = theme.secondary_accent;
+    ctx.fillText('TUTOR / PRACTICAL GUIDE', 74, H * 0.21);
+    ctx.font = font(90);
+    ctx.fillStyle = theme.accent;
+    ctx.fillText(String(scene.chapter + 1).padStart(2, '0') + '.', 70, H * 0.285);
+    ctx.fillStyle = theme.ink;
+    wrapText(ctx, scene.heading, 82, W - 140)
+      .slice(0, 3)
+      .forEach((line, index) => ctx.fillText(line, 70, H * 0.43 + index * 102));
+    ctx.font = font(27);
+    ctx.fillStyle = theme.muted;
+    ctx.fillText(ellipsis(ctx, plan.title || '', W - 150), 76, H * 0.77);
+  } else {
+    const rect = style.videoRect || { x, y, width: vw, height: vh };
+    ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+    ctx.strokeStyle = style.line;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 1, y - 1, vw + 1, vh + 1);
+  }
+  paintHeader(ctx, brandLayout(ctx, style, W, x), scene, plan, style, x);
+  paintTimeline(ctx, plan.chapterSegments, scene, style, x, H, layout.timeline.labelBaseline);
 }
 
 async function framePreview({
@@ -283,8 +333,11 @@ async function framePreview({
   script,
   watermark,
   title = false,
+  frame,
 }) {
   const layout = frameLayout(info, style, exportOptions);
+  const backdrop = await prepareFrameBackground(layout, style, frame);
+  style = frameStyle(style, backdrop, title);
   const c = createCanvas(layout.width, layout.height),
     ctx = c.getContext('2d');
   const selected = {
@@ -305,8 +358,7 @@ async function framePreview({
     layout.timeline.width,
     layout.timeline.gap,
   );
-  ctx.fillStyle = style.background;
-  ctx.fillRect(0, 0, layout.width, layout.height);
+  paintFrameBackground(ctx, style, layout.width, layout.height);
   if (!title) {
     if (background) {
       const image = await loadImage(background),
@@ -333,34 +385,42 @@ async function framePreview({
   const overlay = createCanvas(layout.width, layout.height),
     oc = overlay.getContext('2d');
   if (!layout.legacy) paintAdaptiveFrame(oc, layout, selected, plan, style);
-  else {
-    oc.fillStyle = style.background;
-    oc.fillRect(0, 0, layout.width, layout.height);
-    if (!title)
-      oc.clearRect(layout.video_x, layout.video_y, layout.video_width, layout.video_height);
-    else
-      fittedText(
-        oc,
-        selected.heading,
-        { x: 70, y: layout.height * 0.35, width: layout.width - 140, height: layout.height * 0.35 },
-        76,
-        style.ink,
-      );
-    paintHeader(oc, brandLayout(oc, style, layout.width, 16), selected, plan, style, 16);
-    paintTimeline(
-      oc,
-      plan.chapterSegments,
-      selected,
-      style,
-      16,
-      layout.height,
-      layout.timeline.labelBaseline,
-    );
-  }
+  else paintLegacyFrame(oc, layout, selected, plan, style);
   ctx.drawImage(overlay, 0, 0);
+  // Show representative clock and progress states using the export palette.
+  const timer = layout.legacy
+    ? {
+        ...brandLayout(ctx, style, layout.width, layout.margin),
+        timeY: 13,
+        timeFont: layout.width < 1000 ? 15 : 18,
+      }
+    : layout.timer;
+  ctx.font = font(timer.timeFont);
+  ctx.fillStyle = style.muted;
+  ctx.textBaseline = 'top';
+  const clockLabel = '00:12 / 01:30';
+  ctx.fillText(
+    clockLabel,
+    timer.timeX + timer.timeWidth - ctx.measureText(clockLabel).width,
+    timer.timeY,
+  );
+  const rail = layout.timeline;
+  ctx.fillStyle = style.footer.accent;
+  for (const segment of plan.chapterSegments.filter((s) => s.index <= selected.chapter)) {
+    ctx.beginPath();
+    ctx.roundRect(
+      rail.x + segment.x,
+      rail.y,
+      segment.width * (segment.index === selected.chapter ? 0.55 : 1),
+      rail.height,
+      Math.min(rail.height / 2, segment.width / 4),
+    );
+    ctx.fill();
+  }
+
   const cap = layout.caption;
   ctx.font = font(cap.size);
-  ctx.fillStyle = style.ink;
+  ctx.fillStyle = style.footer.ink;
   ctx.textBaseline = 'alphabetic';
   wrapText(ctx, selected.narration || '', cap.size, cap.textWidth)
     .slice(0, 2)
@@ -382,6 +442,7 @@ async function framePreview({
     image: 'data:image/png;base64,' + small.toBuffer('image/png').toString('base64'),
     canvas: layout,
     sample: !background,
+    contrast: { top: backdrop.top, bottom: backdrop.bottom },
   };
 }
 
@@ -391,5 +452,6 @@ module.exports = {
   containRect,
   wrapText,
   paintAdaptiveFrame,
+  paintLegacyFrame,
   framePreview,
 };

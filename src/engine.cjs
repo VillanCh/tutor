@@ -405,18 +405,18 @@ class Engine extends EventEmitter {
   }
   async saveBranding(id, value, revision) {
     const p = this.store.get(id);
-    if (p.job) throw Error('请等待当前任务结束后修改广告与水印');
+    if (p.job) throw Error('请等待当前任务结束后修改框架与品牌设置');
     const before = p.revision;
     if (revision != null && revision !== before)
-      throw Error('项目已更新，请重新打开广告与水印设置');
+      throw Error('项目已更新，请重新打开框架与品牌设置');
     const branding = await require('./branding.cjs').importBranding(value, this.store.dir(id));
-    if (p.job || p.revision !== before) throw Error('项目已更新，请重新打开广告与水印设置');
+    if (p.job || p.revision !== before) throw Error('项目已更新，请重新打开框架与品牌设置');
     p.branding = branding;
     p.revision += 1;
     p.approval = null;
     p.status = p.script ? 'review' : 'draft';
     await this.store.save(p);
-    this.publish(p, { stage: '广告与水印已保存，请重新审核制作' });
+    this.publish(p, { stage: '框架与品牌设置已保存，请重新审核制作' });
     return p;
   }
   async saveExportOptions(id, value, revision) {
@@ -443,7 +443,7 @@ class Engine extends EventEmitter {
       expectedBrandingHash !== currentBrandingHash &&
       (expectedBrandingHash != null || currentBrandingHash !== brandingHash())
     )
-      throw Error('广告或水印已更新，请重新打开审核窗口核对');
+      throw Error('框架、广告或水印已更新，请重新打开审核窗口核对');
     const { exportHash } = require('./frame-layout.cjs');
     const currentExportHash = exportHash(p.exportOptions);
     if (

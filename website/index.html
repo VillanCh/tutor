@@ -15,10 +15,10 @@
       property="og:description"
       content="从一段录屏，到一堂好课。免费桌面工作台，登录 YAKCOOL 即可连接 AI 服务。"
     />
-    <meta property="og:url" content="https://villanch.github.io/tutor/" />
-    <meta property="og:image" content="https://villanch.github.io/tutor/assets/social-card.jpg" />
+    <meta property="og:url" content="https://tutor.yaklang.com/" />
+    <meta property="og:image" content="https://tutor.yaklang.com/assets/social-card.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="canonical" href="https://villanch.github.io/tutor/" />
+    <link rel="canonical" href="https://tutor.yaklang.com/" />
     <link rel="icon" href="./assets/tutor.png" type="image/png" />
     <link rel="preload" href="./assets/workbench.webp" as="image" fetchpriority="high" />
     <link rel="stylesheet" href="./styles.css" />
@@ -36,7 +36,8 @@
         >
         <div class="nav-links" id="nav-links">
           <a href="#workflow">制作流程</a><a href="#demo">教程与演示</a><a href="#studio">工作台</a
-          ><a href="#getting-started">开始使用</a><a href="#faq">常见问题</a>
+          ><a href="#templates">视频框架</a><a href="#getting-started">开始使用</a
+          ><a href="#faq">常见问题</a>
         </div>
         <div class="nav-actions">
           <a
@@ -365,6 +366,63 @@
               <div>
                 <h3>项目存本机，AI 按需调用</h3>
                 <p>素材与成片保存在本地；生成时，相关视频、资料和文本会发送至所选模型服务。</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section container" id="templates" aria-labelledby="templates-title">
+        <div class="section-heading centered">
+          <p class="eyebrow">YOUR BACKGROUND. YOUR PRESET.</p>
+          <h2 id="templates-title">
+            亮暗都清楚，<br /><span class="muted-heading">把品牌留在背景里。</span>
+          </h2>
+          <p>
+            上传一张图片，自动模糊、适度压暗、降低饱和度。<br />保存为自己的预设，每一堂课都能直接复用。
+          </p>
+        </div>
+        <div class="studio-layout">
+          <div class="studio-image">
+            <img
+              src="./assets/frame-templates.webp"
+              alt="Tutor 亮色与暗色视频框架模板对比，标题与字幕自动匹配对比度。"
+              width="1880"
+              height="1250"
+              loading="lazy"
+            />
+            <span class="image-note">Tutor {{VERSION}} · 同一段录屏，四套亮暗框架</span>
+          </div>
+          <div class="studio-features">
+            <article>
+              <span class="feature-index">01</span>
+              <div>
+                <h3>自己的图片，自己的预设</h3>
+                <p>
+                  支持 PNG、JPG、WebP，最大 20
+                  MB。背景与参数一起保存到本机预设库，新项目可直接选用。
+                </p>
+              </div>
+            </article>
+            <article>
+              <span class="feature-index">02</span>
+              <div>
+                <h3>背景柔和，操作清晰</h3>
+                <p>默认模糊 24、压暗 18%、饱和度 65%。可一键选择“更低干扰”，也能分别微调。</p>
+              </div>
+            </article>
+            <article>
+              <span class="feature-index">03</span>
+              <div>
+                <h3>上下区域，分别适配</h3>
+                <p>标题、计时器、字幕与章节进度条自动匹配深浅配色，复杂背景增加局部遮罩。</p>
+              </div>
+            </article>
+            <article>
+              <span class="feature-index">04</span>
+              <div>
+                <h3>正文与过场，保持统一</h3>
+                <p>横屏、竖屏和章节过场共用同一套背景；原始录屏始终等比完整显示。</p>
               </div>
             </article>
           </div>

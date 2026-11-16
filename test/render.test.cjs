@@ -77,6 +77,7 @@ test(
     }
     const progress = [];
     const result = await render({
+      branding: { frame: { preset: 'paper' } },
       source,
       info: await probe(source),
       script,

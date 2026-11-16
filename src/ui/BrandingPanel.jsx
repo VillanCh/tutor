@@ -19,6 +19,7 @@ import {
   WATERMARK_TONES,
   WATERMARK_STYLES,
 } from '../branding-options.mjs';
+import FrameTemplatePanel from './FrameTemplatePanel';
 import WatermarkPreview from './WatermarkPreview';
 import { basename } from './workbench';
 
@@ -38,7 +39,8 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
     }
     setPicking(true);
     try {
-      const path = await window.tutorDesktop.pickBranding(key);
+      const selected = await window.tutorDesktop.pickBranding(key);
+      const path = Array.isArray(selected) ? selected[0] : selected;
       if (path) {
         update(key, { path, name: basename(path), info: null, hash: null });
         if (key !== 'watermark') setAdOpen((open) => ({ ...open, [key]: false }));
@@ -78,6 +80,12 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
   );
   const contents = (
     <div className="branding-fields">
+      <FrameTemplatePanel
+        value={b.frame}
+        setValue={(frame) => update('frame', frame)}
+        project={project}
+        disabled={disabled}
+      />
       <p className="branding-help">
         按需开启广告素材与水印。片头在正文前播放，片尾用于收尾引导；水印贯穿整条成片。
       </p>
@@ -434,7 +442,7 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
           <summary>
             <BadgeCheck size={15} />
             <span>
-              片头、片尾与水印广告 <small>可选</small>
+              视频框架、广告与水印 <small>可选</small>
             </span>
             <ChevronDown size={14} />
           </summary>
@@ -451,7 +459,7 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
       )}
       {collapsible && !expanded && (
         <p className="branding-collapsed-note">
-          支持广告视频、图片及文字 / Logo 水印，点击上方展开。
+          支持自定义背景、广告视频与文字 / Logo 水印，点击上方展开。
         </p>
       )}
     </div>

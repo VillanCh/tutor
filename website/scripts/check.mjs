@@ -37,6 +37,8 @@ for (const [pattern, label] of [
   [/<track\b[^>]*kind="captions"/, 'Video captions'],
   [/本视频由 Tutor 自动制作/, 'Tutor-generated tutorial credit'],
   [/data-generated-by="tutor"/, 'Featured Tutor tutorial'],
+  [/保存为自己的预设/, 'Reusable background presets'],
+  [/https:\/\/tutor\.yaklang\.com\//, 'Custom domain metadata'],
 ])
   assert.ok(pattern.test(html), `Missing website requirement: ${label}`);
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);

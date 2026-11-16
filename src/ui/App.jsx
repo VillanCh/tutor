@@ -1621,7 +1621,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
       });
       updateProject(p);
       setBrandingOpen(false);
-      toast.success('广告与水印已保存，审核后重新制作即可生效。');
+      toast.success('框架与品牌设置已保存，审核后重新制作即可生效。');
     });
   const messages = useMemo(() => {
     if (!project) return [];
@@ -2240,7 +2240,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                         onClick={showBranding}
                         disabled={busy || pending}
                       >
-                        广告与水印 <Settings2 size={13} />
+                        框架与品牌 <Settings2 size={13} />
                       </Button>
                       <Button
                         variant="ghost"
@@ -2550,9 +2550,9 @@ export default function App({ account, refreshAccount, logout, accountPending })
       <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
         <DialogContent className="branding-dialog">
           <DialogHeader>
-            <DialogTitle>品牌广告与视频水印</DialogTitle>
+            <DialogTitle>视频框架、广告与水印</DialogTitle>
             <DialogDescription>
-              统一设置片头、片尾与全程水印。预览品牌呈现效果，保存后重新审核制作。
+              上传背景制作专属框架，统一设置片头、片尾与水印。保存后重新审核制作。
             </DialogDescription>
           </DialogHeader>
           <div className="branding-dialog-body">
@@ -2570,7 +2570,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
               取消
             </Button>
             <Button onClick={saveBranding} disabled={busy || pending}>
-              <Save size={14} /> {pending ? '正在保存…' : '保存广告与水印'}
+              <Save size={14} /> {pending ? '正在保存…' : '保存框架与品牌设置'}
             </Button>
           </div>
         </DialogContent>

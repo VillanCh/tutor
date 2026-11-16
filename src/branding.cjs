@@ -7,18 +7,36 @@ const {
   WATERMARK_POSITIONS,
   WATERMARK_DENSITIES,
   WATERMARK_TONES,
+  FRAME_PRESETS,
+  FRAME_DEFAULTS,
 } = require('./branding-options.mjs');
 const { FFMPEG, run, probe, wav } = require('./media.cjs');
 const { font: contentFont } = require('./fonts.cjs');
-const { brandLayout, paintHeader } = require('./tutorial-brand.cjs');
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 const VIDEO = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
-const LABELS = { intro: '片头广告', outro: '片尾广告', watermark: '水印 Logo' };
+const LABELS = { intro: '片头广告', outro: '片尾广告', watermark: '水印 Logo', frame: '框架背景' };
 
 function normalizeBranding(value) {
   if (value != null && (typeof value !== 'object' || Array.isArray(value)))
     throw Error('广告与水印设置格式无效');
   const b = brandingDefaults(value);
+  const f = b.frame;
+  if (typeof f.enabled !== 'boolean' || typeof f.path !== 'string') throw Error('框架背景设置无效');
+  if (!Object.hasOwn(FRAME_PRESETS, f.preset)) throw Error('请选择有效的视频框架模板');
+  if (!Number.isFinite(f.blur) || f.blur < 0 || f.blur > 60) throw Error('背景模糊需为 0–60');
+  if (!Number.isFinite(f.dim) || f.dim < 0 || f.dim > 70) throw Error('背景压暗需为 0%–70%');
+  if (!Number.isFinite(f.saturation) || f.saturation < 0 || f.saturation > 100)
+    throw Error('背景饱和度需为 0%–100%');
+  if (!['auto', 'light', 'dark'].includes(f.contrast)) throw Error('框架文字配色无效');
+  f.path = f.path.trim();
+  if (f.enabled && f.preset === 'custom' && !IMAGE.test(f.path))
+    throw Error('请上传 PNG、JPG 或 WebP 框架背景');
+  b.frame = Object.fromEntries(
+    ['enabled', 'preset', 'path', 'blur', 'dim', 'saturation', 'contrast'].map((key) => [
+      key,
+      f[key],
+    ]),
+  );
   for (const key of ['intro', 'outro', 'watermark']) {
     if (typeof b[key].enabled !== 'boolean') throw Error(LABELS[key] + '开关无效');
     if (typeof b[key].path !== 'string') throw Error(LABELS[key] + '文件路径无效');
@@ -84,8 +102,11 @@ async function hashAsset(file) {
 }
 
 function assetKeys(b) {
-  return ['intro', 'outro', 'watermark'].filter(
-    (key) => b[key].enabled && (key !== 'watermark' || b[key].type === 'image'),
+  return ['intro', 'outro', 'watermark', 'frame'].filter(
+    (key) =>
+      b[key].enabled &&
+      (key !== 'watermark' || b[key].type === 'image') &&
+      (key !== 'frame' || b[key].preset === 'custom'),
   );
 }
 
@@ -131,8 +152,8 @@ async function importBranding(value, dir) {
       info,
     });
     // Existing imported names remain readable when saving another setting.
-    if (value?.[key]?.name && path.dirname(file) === path.resolve(assetDir))
-      item.name = String(value[key].name);
+    if (typeof value?.[key]?.name === 'string' && value[key].name.trim())
+      item.name = value[key].name.split(/[\\/]/).at(-1).slice(0, 200);
   }
   return b;
 }
@@ -140,10 +161,14 @@ async function importBranding(value, dir) {
 function brandingHash(value) {
   const b = normalizeBranding(value);
   const active = Object.fromEntries(
-    Object.entries(b).map(([key, item]) => [
-      key,
-      item.enabled ? { ...item, hash: value?.[key]?.hash || null } : { enabled: false },
-    ]),
+    Object.entries(b)
+      .filter(
+        ([key, item]) => key !== 'frame' || JSON.stringify(item) !== JSON.stringify(FRAME_DEFAULTS),
+      )
+      .map(([key, item]) => [
+        key,
+        item.enabled ? { ...item, hash: value?.[key]?.hash || null } : { enabled: false },
+      ]),
   );
   return crypto.createHash('sha256').update(JSON.stringify(active)).digest('hex');
 }
@@ -257,90 +282,22 @@ async function brandingPreview({
   heading = '操作与结果',
   caption,
   exportOptions,
+  frame,
+  title = false,
+  script,
+  selectedScene,
 }) {
-  const w = normalizeBranding({ watermark }).watermark;
-  if (exportOptions?.aspect && exportOptions.aspect !== 'auto')
-    return require('./frame-layout.cjs').framePreview({
-      info,
-      style,
-      exportOptions,
-      background,
-      scene: { heading, narration: caption },
-      watermark: w,
-    });
-  const W = style.width,
-    vw = W - 32;
-  const vh =
-    Math.round(Math.min(1400, (vw * (info?.height || 720)) / (info?.width || 1280)) / 2) * 2;
-  const canvas = {
-    width: W,
-    height: 72 + vh + 128,
-    video_x: 16,
-    video_y: 72,
-    video_width: vw,
-    video_height: vh,
-  };
-  const c = createCanvas(W, canvas.height),
-    ctx = c.getContext('2d');
-  ctx.fillStyle = style.background;
-  ctx.fillRect(0, 0, W, canvas.height);
-  ctx.fillStyle = '#eef0f4';
-  ctx.fillRect(16, 72, vw, vh);
-  if (background) {
-    const image = await loadImage(background);
-    const scale = Math.min(vw / image.width, vh / image.height);
-    ctx.drawImage(
-      image,
-      16 + (vw - image.width * scale) / 2,
-      72 + (vh - image.height * scale) / 2,
-      image.width * scale,
-      image.height * scale,
-    );
-  } else {
-    ctx.fillStyle = '#dde2eb';
-    ctx.fillRect(16, 72, vw * 0.22, vh);
-    for (let row = 0; row < 5; row++) {
-      ctx.fillStyle = row === 1 ? '#c6cde0' : '#d1d7e2';
-      ctx.fillRect(vw * 0.04, 110 + row * vh * 0.11, vw * 0.15, vh * 0.055);
-    }
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(vw * 0.26, 112, vw * 0.68, vh * 0.78);
-    ctx.fillStyle = '#c0c9d9';
-    for (let row = 0; row < 6; row++)
-      ctx.fillRect(vw * 0.3, 160 + row * vh * 0.095, vw * (row % 2 ? 0.48 : 0.57), 9);
-  }
-  paintHeader(
-    ctx,
-    brandLayout(ctx, style, W, 16),
-    { heading, chapter: 0 },
-    { canvas: { width: W }, chapters: ['教程预览'] },
+  return require('./frame-layout.cjs').framePreview({
+    info,
     style,
-    16,
-  );
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#81786d';
-  ctx.textAlign = 'center';
-  ctx.font = contentFont(27);
-  const subtitle = caption
-    ? Array.from(caption).slice(0, 38).join('')
-    : '字幕保护示意 · 讲解文字显示于此区域';
-  ctx.fillText(subtitle, W / 2, 72 + vh + 38, W - 60);
-  if (w.enabled) {
-    try {
-      ctx.drawImage(await watermarkLayer(w, canvas), 0, 0);
-    } catch (error) {
-      if (w.type === 'image')
-        throw Error('无法预览 Logo，请重新选择可读的 PNG、JPG 或 WebP 图片（不超过 20 MB）。');
-      throw error;
-    }
-  }
-  const small = createCanvas(800, Math.round((canvas.height * 800) / W));
-  small.getContext('2d').drawImage(c, 0, 0, small.width, small.height);
-  return {
-    image: 'data:image/png;base64,' + small.toBuffer('image/png').toString('base64'),
-    canvas,
-    sample: !background,
-  };
+    exportOptions,
+    background,
+    frame,
+    title,
+    scene: selectedScene || { heading, ...(caption != null ? { narration: caption } : {}) },
+    script,
+    watermark,
+  });
 }
 
 async function applyBranding({
@@ -354,7 +311,7 @@ async function applyBranding({
   background = '#000000',
 }) {
   const b = normalizeBranding(branding);
-  if (!Object.values(b).some((item) => item.enabled)) return null;
+  if (!['intro', 'outro', 'watermark'].some((key) => b[key].enabled)) return null;
   const { width: W, height: H } = plan.canvas;
   const parts = [];
   for (const key of ['intro', 'content', 'outro']) {

@@ -91,13 +91,14 @@ await Promise.all([
     JSON.stringify({ commit, version: release.version, release: release.url }, null, 2) + '\n',
   ),
   writeFile(path.join(out, '.nojekyll'), ''),
+  cp(path.join(root, 'CNAME'), path.join(out, 'CNAME')),
   writeFile(
     path.join(out, 'robots.txt'),
-    'User-agent: *\nAllow: /\nSitemap: https://villanch.github.io/tutor/sitemap.xml\n',
+    'User-agent: *\nAllow: /\nSitemap: https://tutor.yaklang.com/sitemap.xml\n',
   ),
   writeFile(
     path.join(out, 'sitemap.xml'),
-    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://villanch.github.io/tutor/</loc></url></urlset>\n',
+    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://tutor.yaklang.com/</loc></url></urlset>\n',
   ),
 ]);
 console.log(`Built Tutor website for v${release.version} (${commit.slice(0, 7)})`);

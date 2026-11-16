@@ -13,6 +13,7 @@ export default function WatermarkPreview({ branding, project }) {
   const value = JSON.stringify({
     projectId: project?.id,
     exportOptions: project?.exportOptions,
+    frame: branding.frame,
     watermark: {
       ...w,
       enabled: w.enabled && !before,

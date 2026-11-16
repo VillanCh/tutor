@@ -22,7 +22,10 @@ async function backgroundImage(file) {
 
 // Sample each area independently. A local scrim handles even a black/white busy image.
 function regionTheme(canvas, box, mode) {
-  const data = canvas.getContext('2d').getImageData(box.x, box.y, box.width, box.height).data;
+  const y = Math.min(canvas.height - 1, box.y);
+  const data = canvas
+    .getContext('2d')
+    .getImageData(box.x, y, box.width, Math.max(1, Math.min(box.height, canvas.height - y))).data;
   // Channel bounds are conservative: small bright details survive the contrast check.
   const darkest = [255, 255, 255],
     brightest = [0, 0, 0];

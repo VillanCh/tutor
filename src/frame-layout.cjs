@@ -39,6 +39,8 @@ function containRect(source, box) {
 function frameLayout(info, style, options) {
   const value = normalizeExportOptions(options);
   const { width: W, height: H } = exportDimensions(value, info, style);
+  if (value.layout)
+    return require('./custom-frame.cjs').customFrameLayout(info, style, value, W, H);
   if (value.aspect === 'auto') {
     const VW = W - 32,
       VH = H - 200;
@@ -184,6 +186,15 @@ function drawAdaptiveTimeline(ctx, layout, segments, scene, style) {
 }
 
 function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
+  if (layout.custom)
+    return require('./custom-frame.cjs').paintCustomFrame(
+      ctx,
+      layout,
+      scene,
+      plan,
+      style,
+      wrapText,
+    );
   const { width: W, height: H, margin: m, unit: u } = layout;
   paintFrameBackground(ctx, style, W, H);
   const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
@@ -399,14 +410,17 @@ async function framePreview({
   ctx.fillStyle = style.muted;
   ctx.textBaseline = 'top';
   const clockLabel = '00:12 / 01:30';
-  ctx.fillText(
-    clockLabel,
-    timer.timeX + timer.timeWidth - ctx.measureText(clockLabel).width,
-    timer.timeY,
-  );
+  if (timer.enabled !== false)
+    ctx.fillText(
+      clockLabel,
+      timer.timeX + timer.timeWidth - ctx.measureText(clockLabel).width,
+      timer.timeY,
+    );
   const rail = layout.timeline;
   ctx.fillStyle = style.footer.accent;
-  for (const segment of plan.chapterSegments.filter((s) => s.index <= selected.chapter)) {
+  for (const segment of plan.chapterSegments.filter(
+    (s) => rail.enabled !== false && s.index <= selected.chapter,
+  )) {
     ctx.beginPath();
     ctx.roundRect(
       rail.x + segment.x,
@@ -422,8 +436,8 @@ async function framePreview({
   ctx.font = font(cap.size);
   ctx.fillStyle = style.footer.ink;
   ctx.textBaseline = 'alphabetic';
-  wrapText(ctx, selected.narration || '', cap.size, cap.textWidth)
-    .slice(0, 2)
+  (cap.enabled === false ? [] : wrapText(ctx, selected.narration || '', cap.size, cap.textWidth))
+    .slice(0, cap.lines || 2)
     .forEach((line, i) =>
       ctx.fillText(
         line,

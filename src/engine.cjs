@@ -424,7 +424,8 @@ class Engine extends EventEmitter {
     if (p.job) throw Error('请等待当前任务结束后调整导出比例');
     if (revision !== p.revision) throw Error('项目已更新，请重新打开导出比例设置');
     const next = require('./export-options.mjs').normalizeExportOptions(value);
-    const { exportHash } = require('./frame-layout.cjs');
+    const { exportHash, frameLayout } = require('./frame-layout.cjs');
+    frameLayout(p.info, this.store.config.style, next);
     if (exportHash(next) === exportHash(p.exportOptions)) return p;
     p.exportOptions = next;
     p.revision += 1;

@@ -38,6 +38,7 @@ for (const [pattern, label] of [
   [/本视频由 Tutor 自动制作/, 'Tutor-generated tutorial credit'],
   [/data-generated-by="tutor"/, 'Featured Tutor tutorial'],
   [/保存为自己的预设/, 'Reusable background presets'],
+  [/让信息密度由你决定/, 'Custom layout density'],
   [/https:\/\/tutor\.yaklang\.com\//, 'Custom domain metadata'],
 ])
   assert.ok(pattern.test(html), `Missing website requirement: ${label}`);

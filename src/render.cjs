@@ -29,7 +29,7 @@ function wrap(ctx, s, size, width, family = 'Tutor Sans') {
   if (current) lines.push(current);
   return lines;
 }
-function captionChunks(text, width, size = 27) {
+function captionChunks(text, width, size = 27, maxLines = 2) {
   const ctx = createCanvas(1, 1).getContext('2d');
   const chunks = [];
   for (const sentence of text
@@ -37,7 +37,8 @@ function captionChunks(text, width, size = 27) {
     .split(/(?<=[。！？；])/u)
     .filter((s) => s.trim())) {
     const lines = wrap(ctx, sentence, size, width);
-    for (let i = 0; i < lines.length; i += 2) chunks.push(lines.slice(i, i + 2).join(''));
+    for (let i = 0; i < lines.length; i += maxLines)
+      chunks.push(lines.slice(i, i + maxLines).join(''));
   }
   return chunks;
 }
@@ -155,7 +156,7 @@ async function render({
   const progressMask = path.join(assets, 'chapter-progress-mask.png');
   await png(progressMask, timeline.width, timeline.height, (ctx) => {
     ctx.fillStyle = '#FFFFFF';
-    for (const segment of plan.chapterSegments) {
+    for (const segment of timeline.enabled === false ? [] : plan.chapterSegments) {
       ctx.beginPath();
       ctx.roundRect(
         segment.x,
@@ -215,19 +216,25 @@ async function render({
     s.captions = [];
     let pos = s.voice_lead;
     if (s.narration) {
-      const chunks = captionChunks(s.narration, caption.textWidth, caption.size),
+      const chunks = captionChunks(
+          s.narration,
+          caption.textWidth,
+          caption.size,
+          caption.lines || 2,
+        ),
         weights = chunks.map((c) => Math.max(1, c.replace(/[A-Za-z0-9./]+/g, 'aa').length)),
         sum = weights.reduce((a, b) => a + b, 0);
       for (let j = 0; j < chunks.length; j++) {
         const span = (s.voice_duration * weights[j]) / sum,
           file = path.join(assets, 'caption-' + i + '-' + j + '.png');
         await png(file, W, CAPTION_H, (ctx) => {
-          if (!layout.legacy) {
+          if (caption.enabled === false) return;
+          if (!layout.legacy && !layout.custom) {
             ctx.fillStyle = backdrop.bottom.line;
             ctx.fillRect(layout.margin, 0, W - layout.margin * 2, Math.max(1, layout.unit));
           }
           wrap(ctx, chunks[j], caption.size, caption.textWidth)
-            .slice(0, 2)
+            .slice(0, caption.lines || 2)
             .forEach((line, k) => {
               ctx.font = font(caption.size);
               ctx.textBaseline = 'alphabetic';
@@ -255,6 +262,7 @@ async function render({
     }
     const status = path.join(assets, 'status-' + i + '.png');
     await png(status, header.timeWidth, header.statusHeight, (ctx) => {
+      if (header.enabled === false) return;
       ctx.font = font(header.statusFont);
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = MUTED;
@@ -546,6 +554,7 @@ async function render({
       header.timeWidth,
       header.timeHeight,
       (ctx) => {
+        if (header.enabled === false) return;
         const label = clock(t) + ' / ' + clock(Math.round(plan.total_duration));
         ctx.font = font(header.timeFont);
         ctx.fillStyle = MUTED;

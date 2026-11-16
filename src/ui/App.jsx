@@ -2252,7 +2252,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                         <Maximize2 size={13} />
                         {project.exportOptions?.aspect && project.exportOptions.aspect !== 'auto'
                           ? project.exportOptions.aspect
-                          : '导出比例'}
+                          : '比例与排版'}
                       </Button>
                     </div>
                   </div>
@@ -2584,9 +2584,9 @@ export default function App({ account, refreshAccount, logout, accountPending })
       >
         <DialogContent className="export-dialog">
           <DialogHeader>
-            <DialogTitle>导出画布与比例</DialogTitle>
+            <DialogTitle>导出画布与自定义排版</DialogTitle>
             <DialogDescription>
-              选择发布尺寸，预览框架与过场。录屏保持等比，字幕独立排版。
+              隐藏顶部、压紧底部，调整文字与边框间距，让录屏占据更多画面。
             </DialogDescription>
           </DialogHeader>
           {exportDraft && project && (
@@ -2610,7 +2610,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
             </Button>
             <Button disabled={busy || pending} onClick={saveExportOptions}>
               <Save size={14} />
-              {pending ? '正在应用…' : '应用画布比例'}
+              {pending ? '正在应用…' : '应用比例与排版'}
             </Button>
           </div>
         </DialogContent>

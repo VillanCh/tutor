@@ -170,7 +170,7 @@ function requireApproval(project) {
   if ((project.approval.brandingHash || brandingHash()) !== brandingHash(project.branding))
     throw Error('广告或水印已变更，请重新确认');
   if ((project.approval.exportHash || exportHash()) !== exportHash(project.exportOptions))
-    throw Error('导出比例或清晰度已变更，请重新确认');
+    throw Error('导出比例、清晰度或排版已变更，请重新确认');
   if (
     project.approval.knowledgeHash !==
     crypto

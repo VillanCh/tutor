@@ -1,3 +1,5 @@
+import { normalizeLayout, layoutMetrics } from './layout-options.mjs';
+
 export const EXPORT_ASPECTS = [
   { id: 'auto', label: '原布局', description: '沿用素材与原有框架', width: 16, height: 11 },
   { id: '16:9', label: '横屏', description: '课程、演示与桌面播放', width: 16, height: 9 },
@@ -15,6 +17,7 @@ export function normalizeExportOptions(value) {
   if (!EXPORT_ASPECTS.some((item) => item.id === result.aspect)) throw Error('请选择常见画布比例');
   if (![720, 1080].includes(result.shortEdge)) throw Error('导出清晰度支持 720p 或 1080p');
   if (result.aspect === 'auto') result.shortEdge = 1080;
+  if (value?.layout != null) result.layout = normalizeLayout(value.layout);
   return result;
 }
 
@@ -25,6 +28,23 @@ export function exportDimensions(
 ) {
   const value = normalizeExportOptions(options);
   if (value.aspect === 'auto') {
+    if (value.layout) {
+      const m = layoutMetrics(value.layout, style.width / 1440);
+      const videoHeight = Math.min(
+        1400,
+        ((style.width - 2 * m.margin - 2 * m.border) * info.height) / info.width,
+      );
+      const height =
+        m.topPadding +
+        m.header +
+        (m.header ? m.gap : 0) +
+        2 * m.border +
+        videoHeight +
+        (m.footer ? m.gap : 0) +
+        m.footer +
+        m.bottomPadding;
+      return { width: style.width, height: Math.ceil(height / 2) * 2 };
+    }
     const videoWidth = style.width - 32;
     return {
       width: style.width,
@@ -39,5 +59,12 @@ export function exportDimensions(
 export function exportSummary(options, info, style) {
   const value = normalizeExportOptions(options);
   const { width, height } = exportDimensions(value, info, style);
-  return (value.aspect === 'auto' ? '原布局' : value.aspect) + ' · ' + width + ' × ' + height;
+  return (
+    (value.aspect === 'auto' ? '原布局' : value.aspect) +
+    ' · ' +
+    width +
+    ' × ' +
+    height +
+    (value.layout ? ' · 自定义排版' : '')
+  );
 }

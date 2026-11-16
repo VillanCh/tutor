@@ -123,6 +123,12 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(await store.markGuideSeen(d.version));
       }
       if (parts[0] === 'api') await account.requireLogin();
+      if (url.pathname === '/api/layout-presets') {
+        const presets = require('./layout-presets.cjs');
+        if (req.method === 'GET') return json(await presets.listLayoutPresets(store.root));
+        if (req.method === 'POST')
+          return json(await presets.updateLayoutPresets(store.root, await readJson(req)));
+      }
       if (url.pathname === '/api/frame-templates') {
         const templates = require('./frame-templates.cjs');
         if (req.method === 'GET') return json(await templates.listTemplates(store.root));

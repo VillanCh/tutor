@@ -24,6 +24,7 @@ export const FRAME_DEFAULTS = {
 export function brandingDefaults(value = {}) {
   const legacyWatermark = value?.watermark && value.watermark.layout == null;
   return {
+    ...(value?.header != null ? { header: value.header } : {}),
     ...(value?.transition != null ? { transition: value.transition } : {}),
     frame: { ...FRAME_DEFAULTS, ...value?.frame },
     intro: { enabled: false, path: '', duration: 5, muted: false, ...value?.intro },
@@ -80,7 +81,16 @@ export function brandingSummary(value) {
   return (
     [
       b.frame.enabled ? (b.frame.name || FRAME_PRESETS[b.frame.preset]) + '框架' : '',
-      b.transition?.enabled ? (b.transition.mode === 'image' ? '整图章节过场' : '自定义章节过场') : '',
+      b.header?.enabled
+        ? { full: '自定义品牌栏', brand: '仅展示品牌', logo: 'Header Logo', hidden: '隐藏品牌栏' }[
+            b.header.mode
+          ] || '品牌栏'
+        : '',
+      b.transition?.enabled
+        ? b.transition.mode === 'image'
+          ? '整图章节过场'
+          : '自定义章节过场'
+        : '',
       b.intro.enabled ? '片头广告' : '',
       b.watermark.enabled
         ? (b.watermark.layout === 'tiled' ? '全屏平铺' : '全程') +

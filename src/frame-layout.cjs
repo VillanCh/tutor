@@ -171,7 +171,14 @@ function drawAdaptiveTimeline(ctx, layout, segments, scene, style) {
     ctx.font = font(Math.round(19 * u));
     ctx.fillStyle = current ? style.ink : style.muted || '#81786D';
     const label = String(segment.index + 1).padStart(2, '0') + '  ' + segment.title;
-    ctx.fillText(ellipsis(ctx, label, segment.width - 2), t.x + segment.x, t.labelBaseline);
+    if (require('./header-brand.cjs').footerLabelsAllowed(style))
+      require('./frame-background.cjs').readableText(
+        ctx,
+        ellipsis(ctx, label, segment.width - 2),
+        t.x + segment.x,
+        t.labelBaseline,
+        style,
+      );
     ctx.fillStyle = style.line || '#DED6C9';
     ctx.beginPath();
     ctx.roundRect(
@@ -202,7 +209,9 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
     return;
   }
   const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
-  if (brand.enabled) {
+  if (style.header)
+    require('./header-brand.cjs').paintProjectHeader(ctx, layout, scene, plan, style);
+  else if (brand.enabled) {
     ctx.font = brandFont(Math.round(38 * u));
     ctx.fillStyle = style.ink;
     ctx.textBaseline = 'top';
@@ -217,7 +226,7 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
   if (scene.kind === 'title') {
     require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
   } else {
-    if (layout.stacked) {
+    if (!style.header && layout.stacked) {
       ctx.font = font(Math.round(18 * u));
       ctx.fillStyle = style.secondary_accent;
       ctx.textBaseline = 'top';
@@ -241,7 +250,7 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
         Math.round((layout.portrait ? 60 : 38) * u),
         style.ink,
       );
-    } else {
+    } else if (!style.header) {
       ctx.font = font(Math.round(24 * u));
       ctx.fillStyle = style.ink;
       ctx.textBaseline = 'top';
@@ -292,7 +301,9 @@ function paintLegacyFrame(ctx, layout, scene, plan, style) {
     ctx.lineWidth = 1;
     ctx.strokeRect(x - 1, y - 1, vw + 1, vh + 1);
   }
-  paintHeader(ctx, brandLayout(ctx, style, W, x), scene, plan, style, x);
+  if (style.header)
+    require('./header-brand.cjs').paintProjectHeader(ctx, layout, scene, plan, style);
+  else paintHeader(ctx, brandLayout(ctx, style, W, x), scene, plan, style, x);
   paintTimeline(ctx, plan.chapterSegments, scene, style, x, H, layout.timeline.labelBaseline);
 }
 
@@ -307,10 +318,15 @@ async function framePreview({
   title = false,
   frame,
   transition,
+  header,
 }) {
   const layout = frameLayout(info, style, exportOptions);
   const backdrop = await prepareFrameBackground(layout, style, frame);
-  style = frameStyle(style, backdrop, title);
+  style = await require('./header-brand.cjs').prepareHeaderStyle(
+    frameStyle(style, backdrop, title),
+    header,
+    frame?.surfaces,
+  );
   const c = createCanvas(layout.width, layout.height),
     ctx = c.getContext('2d');
   const selected = {
@@ -380,11 +396,17 @@ async function framePreview({
   ctx.fillStyle = style.muted;
   ctx.textBaseline = 'top';
   const clockLabel = '00:12 / 01:30';
-  if (timer.enabled !== false && (!title || require('./transition.cjs').transitionChrome(style)))
-    ctx.fillText(
+  if (
+    timer.enabled !== false &&
+    require('./header-brand.cjs').headerTimerAllowed(style) &&
+    (!title || require('./transition.cjs').transitionChrome(style))
+  )
+    require('./frame-background.cjs').readableText(
+      ctx,
       clockLabel,
       timer.timeX + timer.timeWidth - ctx.measureText(clockLabel).width,
       timer.timeY,
+      style,
     );
   const rail = layout.timeline;
   ctx.fillStyle = style.footer.accent;
@@ -415,10 +437,12 @@ async function framePreview({
   )
     .slice(0, cap.lines || 2)
     .forEach((line, i) =>
-      ctx.fillText(
+      require('./frame-background.cjs').readableText(
+        ctx,
         line,
         (layout.width - ctx.measureText(line).width) / 2,
         cap.y + cap.baseline + i * cap.lineHeight,
+        style.footer,
       ),
     );
   if (watermark?.enabled) {

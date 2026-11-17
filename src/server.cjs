@@ -123,6 +123,18 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(await store.markGuideSeen(d.version));
       }
       if (parts[0] === 'api') await account.requireLogin();
+      if (url.pathname === '/api/header-presets') {
+        const presets = require('./header-presets.cjs');
+        if (req.method === 'GET') return json(await presets.listPresets(store.root));
+        if (req.method === 'POST') {
+          const d = await readJson(req);
+          if (d.action === 'delete') {
+            await presets.deletePreset(store.root, d.id);
+            return json({ deleted: true });
+          }
+          return json(await presets.savePreset(store.root, d.name, d.header, d.surfaces));
+        }
+      }
       if (url.pathname === '/api/transition-templates') {
         const templates = require('./transition-templates.cjs');
         if (req.method === 'GET') return json(await templates.listTemplates(store.root));
@@ -252,10 +264,11 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         const d = await readJson(req);
         const { normalizeBranding, brandingPreview } = require('./branding.cjs');
         const projectBranding = d.projectId ? store.get(d.projectId).branding : null;
-        const { watermark, frame, transition } = normalizeBranding({
+        const { watermark, frame, transition, header } = normalizeBranding({
           watermark: d.watermark,
           frame: d.frame ?? projectBranding?.frame,
           transition: d.transition ?? projectBranding?.transition,
+          header: d.header ?? projectBranding?.header,
         });
         let background, info, heading, caption, exportOptions, script, selectedScene;
         if (d.projectId) {
@@ -269,7 +282,10 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
           info = project.info;
           script = project.script;
           selectedScene = scene;
-          exportOptions = project.exportOptions;
+          exportOptions = require('./header-options.mjs').applyHeaderVisibility(
+            project.exportOptions,
+            d.header,
+          );
           heading = scene?.heading;
           caption = scene?.narration;
           const time = Math.max(
@@ -301,6 +317,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             watermark,
             frame,
             transition,
+            header,
             title: d.kind === 'title',
             background,
             info,
@@ -362,6 +379,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             watermark: p.branding?.watermark,
             frame: p.branding?.frame,
             transition: p.branding?.transition,
+            header: p.branding?.header,
           }),
         );
       }

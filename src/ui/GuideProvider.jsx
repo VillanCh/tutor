@@ -12,6 +12,8 @@ export default function GuideProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [initialFeature, setInitialFeature] = useState(null);
+  const [initialGroup, setInitialGroup] = useState('all');
+  const [updated, setUpdated] = useState(false);
   const [intent, setIntent] = useState(null);
   const seen = useRef(false);
   const intentId = useRef(0);
@@ -21,7 +23,11 @@ export default function GuideProvider({ children }) {
       .then((state) => {
         if (!alive) return;
         seen.current = state.seen === true && state.version === GUIDE_VERSION;
-        setReady(seen.current);
+        setReady(seen.current || state.updated === true);
+        if (state.updated) {
+          setUpdated(true);
+          setInitialGroup('customize');
+        }
         setOpen(!seen.current);
         setLoaded(true);
       })
@@ -37,6 +43,8 @@ export default function GuideProvider({ children }) {
   }, []);
   const openGuide = useCallback((feature = null) => {
     setInitialFeature(feature);
+    setInitialGroup('all');
+    setUpdated(false);
     setOpen(true);
   }, []);
   const closeGuide = useCallback((feature, message) => {
@@ -73,6 +81,8 @@ export default function GuideProvider({ children }) {
         open={open}
         firstRun={!ready}
         initialFeature={initialFeature}
+        initialGroup={initialGroup}
+        updated={updated}
         onClose={closeGuide}
       />
     </GuideContext.Provider>

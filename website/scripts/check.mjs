@@ -40,6 +40,8 @@ for (const [pattern, label] of [
   [/保存为自己的预设/, 'Reusable background presets'],
   [/让信息密度由你决定/, 'Custom layout density'],
   [/背景和内容都由你决定/, 'Custom chapter transitions'],
+  [/Header 与 Footer 独立调节半透明底色/, 'Translucent brand header and footer'],
+  [/Bento 带你完成客制化/, 'Actionable customization guide'],
   [/https:\/\/tutor\.yaklang\.com\//, 'Custom domain metadata'],
 ])
   assert.ok(pattern.test(html), `Missing website requirement: ${label}`);

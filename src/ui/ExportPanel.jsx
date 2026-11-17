@@ -68,9 +68,15 @@ export function ExportPreview({ project, value, kind = 'content', sceneId, onPre
   );
 }
 
-export default function ExportPanel({ project, value, setValue, disabled }) {
+export default function ExportPanel({
+  project,
+  value,
+  setValue,
+  disabled,
+  initialSection = 'layout',
+}) {
   const [kind, setKind] = useState('content');
-  const [section, setSection] = useState('layout');
+  const [section, setSection] = useState(initialSection);
   const [preview, setPreview] = useState(null);
   const options = normalizeExportOptions(value);
   const dimensions =

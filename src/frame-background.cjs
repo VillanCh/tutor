@@ -21,7 +21,7 @@ async function backgroundImage(file) {
 }
 
 // Sample each area independently. A local scrim handles even a black/white busy image.
-function regionTheme(canvas, box, mode) {
+function regionTheme(canvas, box, mode, fixedOpacity) {
   const y = Math.min(canvas.height - 1, box.y);
   const data = canvas
     .getContext('2d')
@@ -43,9 +43,11 @@ function regionTheme(canvas, box, mode) {
         return ratio(light ? 1 : luminance(18, 24, 32), luminance(...rgb));
       }),
     );
-  const light = mode === 'light' || (mode === 'auto' && score(true, 0) >= score(false, 0));
-  let opacity = 0;
-  while (score(light, opacity) < 4.5 && opacity < 0.85) opacity += 0.05;
+  const light =
+    mode === 'light' ||
+    (mode === 'auto' && score(true, fixedOpacity ?? 0) >= score(false, fixedOpacity ?? 0));
+  let opacity = fixedOpacity ?? 0;
+  if (fixedOpacity == null) while (score(light, opacity) < 4.5 && opacity < 0.85) opacity += 0.05;
   const accent = light ? [255, 196, 118] : [120, 52, 0];
   const accentScore = Math.min(
     ...pixels.map((p) =>
@@ -66,6 +68,7 @@ function regionTheme(canvas, box, mode) {
     light,
     opacity,
     contrast: score(light, opacity),
+    outline: score(light, opacity) < 4.5,
     box,
   };
 }
@@ -117,12 +120,19 @@ async function prepareFrameBackground(layout, style, value) {
       ctx.fillRect(0, 0, W, H);
     }
   }
-  const top = regionTheme(canvas, { x: 0, y: 0, width: W, height: layout.video_y }, f.contrast);
+  const surfaces = f.surfaces;
+  const top = regionTheme(
+    canvas,
+    { x: 0, y: 0, width: W, height: layout.video_y },
+    f.contrast,
+    surfaces?.headerMode === 'custom' ? surfaces.headerOpacity / 100 : undefined,
+  );
   const bottomY = layout.video_y + layout.video_height;
   const bottom = regionTheme(
     canvas,
     { x: 0, y: bottomY, width: W, height: H - bottomY },
     f.contrast,
+    surfaces?.footerMode === 'custom' ? surfaces.footerOpacity / 100 : undefined,
   );
   const center = regionTheme(
     canvas,
@@ -158,6 +168,18 @@ function paintFrameBackground(ctx, style, width, height) {
   }
 }
 
+function readableText(ctx, text, x, y, theme) {
+  if (theme?.outline) {
+    ctx.save();
+    ctx.strokeStyle = theme.light ? '#000000dd' : '#ffffffee';
+    ctx.lineWidth = Math.max(1.5, parseFloat(ctx.font.replace(/^(?:\d+\s+)?/, '')) * 0.08 || 2);
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.restore();
+  }
+  ctx.fillText(text, x, y);
+}
+
 module.exports = {
   backgroundImage,
   prepareFrameBackground,
@@ -167,4 +189,5 @@ module.exports = {
   ratio,
   regionTheme,
   scrim,
+  readableText,
 };

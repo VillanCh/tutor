@@ -87,8 +87,12 @@ async function render({
 }) {
   const project = { source, sources, info };
   ensureFonts();
-  const baseStyle = config.style;
-  const style = config.style,
+  const baseStyle = await require('./header-brand.cjs').prepareHeaderStyle(
+    config.style,
+    branding?.header,
+    branding?.frame?.surfaces,
+  );
+  const style = baseStyle,
     FPS = style.fps,
     layout = frameLayout(info, style, exportOptions),
     W = layout.width,
@@ -146,6 +150,8 @@ async function render({
         statusFont: 11,
       }
     : layout.timer;
+  header.enabled =
+    header.enabled !== false && require('./header-brand.cjs').headerTimerAllowed(baseStyle);
   plan.models = config.roles;
   plan.speech = config.speech;
   const assets = path.join(dir, 'assets'),
@@ -217,6 +223,8 @@ async function render({
     const chrome = !title || require('./transition.cjs').transitionChrome(sceneStyle);
     s.transitionChrome = chrome;
     s.timerInk = sceneStyle.muted;
+    s.timerOutline = !!sceneStyle.outline;
+    s.timerLight = !!sceneStyle.light;
     if (!title)
       sceneStyle.videoRect = containRect(input.info, { x: VX, y: VY, width: VW, height: VH });
     await png(overlay, W, H, (ctx) => {
@@ -249,10 +257,12 @@ async function render({
               ctx.font = font(caption.size);
               ctx.textBaseline = 'alphabetic';
               ctx.fillStyle = sceneStyle.footer.ink;
-              ctx.fillText(
+              require('./frame-background.cjs').readableText(
+                ctx,
                 line,
                 (W - ctx.measureText(line).width) / 2,
                 caption.baseline + k * caption.lineHeight,
+                sceneStyle.footer,
               );
             });
         });
@@ -276,10 +286,12 @@ async function render({
       ctx.font = font(header.statusFont);
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = sceneStyle.muted;
-      ctx.fillText(
+      require('./frame-background.cjs').readableText(
+        ctx,
         '无声观察',
         header.timeWidth - ctx.measureText('无声观察').width,
         header.statusFont + 1,
+        sceneStyle,
       );
     });
     const args = ['-hide_banner', '-v', 'error', '-y', '-filter_complex_threads', '1'];
@@ -572,7 +584,14 @@ async function render({
         ctx.fillStyle =
           plan.scenes.find((s) => t >= s.offset && t < s.offset + s.duration)?.timerInk || MUTED;
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(label, header.timeWidth - ctx.measureText(label).width, header.timeFont + 7);
+        const scene = plan.scenes.find((s) => t >= s.offset && t < s.offset + s.duration);
+        require('./frame-background.cjs').readableText(
+          ctx,
+          label,
+          header.timeWidth - ctx.measureText(label).width,
+          header.timeFont + 7,
+          { outline: scene?.timerOutline, light: scene?.timerLight },
+        );
       },
     );
   await run(

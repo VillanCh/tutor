@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   ArrowRight,
   BadgeCheck,
@@ -21,16 +21,25 @@ import {
 } from '../branding-options.mjs';
 import FrameTemplatePanel from './FrameTemplatePanel';
 import TransitionPanel from './TransitionPanel';
+import HeaderBrandPanel from './HeaderBrandPanel';
 import WatermarkPreview from './WatermarkPreview';
 import { basename } from './workbench';
 
-export default function BrandingPanel({ value, setValue, disabled, collapsible = false, project }) {
+export default function BrandingPanel({
+  value,
+  setValue,
+  disabled,
+  collapsible = false,
+  project,
+  initialSection = 'frame',
+}) {
   const b = brandingDefaults(value);
   const id = useId();
   const [expanded, setExpanded] = useState(Object.values(b).some((item) => item.enabled));
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
-  const [section, setSection] = useState('frame');
+  const [section, setSection] = useState(initialSection);
+  useEffect(() => setSection(initialSection), [initialSection]);
   const [adOpen, setAdOpen] = useState({ intro: !b.intro.path, outro: !b.outro.path });
   const update = (key, change) => setValue({ ...b, [key]: { ...b[key], ...change } });
   const choose = async (key) => {
@@ -85,12 +94,14 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
       <div className="branding-section-tabs" role="group" aria-label="框架与过场设置分组">
         {[
           ['frame', '正文框架'],
+          ['header', '品牌与上下栏'],
           ['transition', '章节过场'],
           ['ads', '广告与水印'],
         ].map(([key, label]) => (
           <button
             type="button"
             key={key}
+            data-branding-section={key}
             aria-pressed={section === key}
             onClick={() => setSection(key)}
           >
@@ -105,13 +116,25 @@ export default function BrandingPanel({ value, setValue, disabled, collapsible =
           project={project}
           disabled={disabled}
           transition={b.transition}
+          header={b.header}
         />
       </div>
+      {section === 'header' && (
+        <HeaderBrandPanel
+          value={b.header}
+          frame={b.frame}
+          transition={b.transition}
+          onChange={(patch) => setValue({ ...b, ...patch })}
+          project={project}
+          disabled={disabled}
+        />
+      )}
       {section === 'transition' && (
         <TransitionPanel
           value={b.transition}
           setValue={(transition) => update('transition', transition)}
           frame={b.frame}
+          header={b.header}
           project={project}
           disabled={disabled}
         />

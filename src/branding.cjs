@@ -20,12 +20,14 @@ const LABELS = {
   watermark: '水印 Logo',
   frame: '框架背景',
   transition: '章节过场图片',
+  header: 'Header Logo',
 };
 
 function normalizeBranding(value) {
   if (value != null && (typeof value !== 'object' || Array.isArray(value)))
     throw Error('广告与水印设置格式无效');
   const b = brandingDefaults(value);
+  if (b.header != null) b.header = require('./header-options.mjs').normalizeHeader(b.header);
   if (b.transition != null)
     b.transition = require('./transition-options.mjs').normalizeTransition(b.transition);
   const f = b.frame;
@@ -45,6 +47,8 @@ function normalizeBranding(value) {
       f[key],
     ]),
   );
+  if (f.surfaces != null)
+    b.frame.surfaces = require('./header-options.mjs').normalizeSurfaces(f.surfaces);
   for (const key of ['intro', 'outro', 'watermark']) {
     if (typeof b[key].enabled !== 'boolean') throw Error(LABELS[key] + '开关无效');
     if (typeof b[key].path !== 'string') throw Error(LABELS[key] + '文件路径无效');
@@ -119,6 +123,12 @@ function assetEntries(b, original = b) {
     )
     .map((key) => ({ item: b[key], original: original?.[key], label: LABELS[key] }));
   const t = b.transition;
+  if (
+    b.header?.enabled &&
+    b.header.mode !== 'hidden' &&
+    (b.header.logoEnabled || b.header.mode === 'logo')
+  )
+    entries.push({ item: b.header, original: original?.header, label: LABELS.header });
   if (t?.enabled) {
     if (t.background === 'custom' || t.mode === 'image')
       entries.push({ item: t, original: original?.transition, label: LABELS.transition });
@@ -186,7 +196,8 @@ function brandingHash(value) {
       .filter(
         ([key, item]) =>
           (key !== 'frame' || JSON.stringify(item) !== JSON.stringify(FRAME_DEFAULTS)) &&
-          (key !== 'transition' || item.enabled),
+          (key !== 'transition' || item.enabled) &&
+          (key !== 'header' || item.enabled),
       )
       .map(([key, item]) => [
         key,
@@ -320,6 +331,7 @@ async function brandingPreview({
   exportOptions,
   frame,
   transition,
+  header,
   title = false,
   script,
   selectedScene,
@@ -331,6 +343,7 @@ async function brandingPreview({
     background,
     frame,
     transition,
+    header,
     title,
     scene: selectedScene || { heading, ...(caption != null ? { narration: caption } : {}) },
     script,

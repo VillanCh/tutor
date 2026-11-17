@@ -16,6 +16,10 @@ import {
   Video,
   X,
   Download,
+  Image,
+  SlidersHorizontal,
+  Type,
+  PanelTop,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button } from './components/ui/button';
@@ -33,9 +37,62 @@ const ICONS = {
   brand: Layers3,
   export: Download,
   history: History,
+  image: Image,
+  layout: SlidersHorizontal,
+  transition: Type,
+  logo: PanelTop,
 };
 
 function FeatureVisual({ feature }) {
+  if (['background', 'layout', 'transition', 'header'].includes(feature.visual))
+    return (
+      <div className={'guide-custom-visual guide-custom-' + feature.visual} aria-hidden="true">
+        {feature.visual === 'background' && (
+          <>
+            <div className="guide-background-swatches">
+              <i />
+              <i />
+              <i />
+              <i />
+            </div>
+            <span>自己的图片 · 柔和背景 · 亮暗适配</span>
+          </>
+        )}
+        {feature.visual === 'layout' && (
+          <>
+            <div className="guide-layout-mini">
+              <i>Header</i>
+              <strong>录屏优先</strong>
+              <small>字幕 · 1–3 行</small>
+            </div>
+            <span>边缘 · 边框 · 字号 · 行高</span>
+          </>
+        )}
+        {feature.visual === 'transition' && (
+          <>
+            <div className="guide-transition-mini">
+              <small>01.</small>
+              <strong>整个文字组居中</strong>
+              <span>标题与副标题也能替换</span>
+            </div>
+            <span>独立背景 / 完整过场图</span>
+          </>
+        )}
+        {feature.visual === 'header' && (
+          <>
+            <div className="guide-header-mini">
+              <div>
+                <i>Y</i>
+                <strong>YOUR BRAND</strong>
+              </div>
+              <span>背景透出来</span>
+              <small>半透明 Footer</small>
+            </div>
+            <span>仅品牌 / 仅 Logo · 透明度可调</span>
+          </>
+        )}
+      </div>
+    );
   if (feature.visual === 'files')
     return (
       <div className="guide-file-visual" aria-hidden="true">
@@ -151,7 +208,14 @@ function FeatureVisual({ feature }) {
   );
 }
 
-export default function FeatureGuide({ open, firstRun, initialFeature, onClose }) {
+export default function FeatureGuide({
+  open,
+  firstRun,
+  initialFeature,
+  initialGroup = 'all',
+  updated = false,
+  onClose,
+}) {
   const [group, setGroup] = useState('all');
   const [selected, setSelected] = useState(null);
   const scrollRef = useRef(null);
@@ -160,11 +224,11 @@ export default function FeatureGuide({ open, firstRun, initialFeature, onClose }
   const feature = GUIDE_FEATURES.find((item) => item.id === selected);
   useEffect(() => {
     if (!open) return;
-    setGroup('all');
+    setGroup(initialGroup);
     setSelected(initialFeature || null);
     overviewScroll.current = 0;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [open, initialFeature]);
+  }, [open, initialFeature, initialGroup]);
   const inspect = (id) => {
     overviewScroll.current = scrollRef.current?.scrollTop || 0;
     setSelected(id);
@@ -194,7 +258,7 @@ export default function FeatureGuide({ open, firstRun, initialFeature, onClose }
             <span>功能导览</span>
           </div>
           <div className="guide-header-actions">
-            <span>随时回来，接着了解</span>
+            <span>{updated ? '客制化功能已更新' : '随时回来，接着了解'}</span>
             <Button variant="ghost" size="sm" className="guide-dismiss" onClick={() => onClose()}>
               {firstRun ? '稍后了解' : '返回工作台'}
               <X size={14} />
@@ -207,13 +271,27 @@ export default function FeatureGuide({ open, firstRun, initialFeature, onClose }
               <div className="guide-intro">
                 <div>
                   <span className="guide-eyebrow">
-                    {firstRun ? '从这里，开始第一节教程' : '需要的时候，找到下一步'}
+                    {updated
+                      ? '最近新增的客制化功能'
+                      : firstRun
+                        ? '从这里，开始第一节教程'
+                        : '需要的时候，找到下一步'}
                   </span>
                   <DialogTitle>
-                    从一段录屏，<span>到一节讲得清楚的教程。</span>
+                    {updated ? (
+                      <>
+                        把你的风格，<span>带进每一堂课。</span>
+                      </>
+                    ) : (
+                      <>
+                        从一段录屏，<span>到一节讲得清楚的教程。</span>
+                      </>
+                    )}
                   </DialogTitle>
                   <DialogDescription>
-                    先了解能做什么，再按步骤开始。每张卡片都有具体用法，也能直接带你进入对应操作。
+                    {updated
+                      ? '背景、排版、过场与品牌栏，都有具体入口和操作步骤。选择一张卡片查看怎么用，再直接进入对应设置。'
+                      : '先了解能做什么，再按步骤开始。每张卡片都有具体用法，也能直接带你进入对应操作。'}
                   </DialogDescription>
                 </div>
                 <nav className="guide-workflow" aria-label="教程制作路径">
@@ -329,6 +407,12 @@ export default function FeatureGuide({ open, firstRun, initialFeature, onClose }
                   <span className="guide-eyebrow">{feature.eyebrow}</span>
                   <DialogTitle>{feature.title}</DialogTitle>
                   <DialogDescription>{feature.purpose}</DialogDescription>
+                  {feature.entry && (
+                    <p className="guide-entry">
+                      <ArrowRight size={14} />
+                      <span>操作入口：{feature.entry}</span>
+                    </p>
+                  )}
                   <ol className="guide-detail-steps">
                     {feature.steps.map(([title, description], index) => (
                       <li key={title}>

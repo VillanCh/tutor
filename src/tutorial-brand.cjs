@@ -95,16 +95,24 @@ function paintTimeline(ctx, segments, scene, style, x, height, labelBaseline = h
   ctx.textBaseline = 'alphabetic';
   for (const segment of segments) {
     const current = segment.index === scene.chapter;
-    if (segment.width >= 24) {
+    if (segment.width >= 24 && require('./header-brand.cjs').footerLabelsAllowed(style)) {
       ctx.font = brandFont(16);
       ctx.fillStyle = current ? style.accent : style.muted || '#81786D';
-      ctx.fillText(String(segment.index + 1).padStart(2, '0'), x + segment.x, labelBaseline);
+      require('./frame-background.cjs').readableText(
+        ctx,
+        String(segment.index + 1).padStart(2, '0'),
+        x + segment.x,
+        labelBaseline,
+        style,
+      );
       ctx.font = font(15);
       ctx.fillStyle = current ? style.ink : style.muted || '#81786D';
-      ctx.fillText(
+      require('./frame-background.cjs').readableText(
+        ctx,
         ellipsis(ctx, segment.title, segment.width - 35),
         x + segment.x + 29,
         labelBaseline,
+        style,
       );
     }
     ctx.fillStyle = style.line || '#DED6C9';

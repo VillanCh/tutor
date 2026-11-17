@@ -23,19 +23,28 @@ async function prepareTransition(layout, style, frame, value, scene) {
           dim: options.dim,
           saturation: options.saturation,
           contrast: options.contrast,
+          ...(frame?.surfaces ? { surfaces: frame.surfaces } : {}),
         }
       : frame,
   );
   let image;
   if (options.mode === 'image') image = await backgroundImage(options.path);
   else {
+    const separateBands = frame?.surfaces && options.showChrome;
+    const y = separateBands ? layout.headerHeight : 0;
+    const bottom = separateBands
+      ? layout.caption.enabled !== false
+        ? layout.caption.y
+        : layout.height
+      : layout.height;
     const theme = regionTheme(
       backdrop.title,
-      { x: 0, y: 0, width: layout.width, height: layout.height },
+      { x: 0, y, width: layout.width, height: Math.max(1, bottom - y) },
       options.contrast,
     );
     scrim(backdrop.title.getContext('2d'), theme);
-    backdrop.top = backdrop.bottom = backdrop.center = theme;
+    if (separateBands) backdrop.center = theme;
+    else backdrop.top = backdrop.bottom = backdrop.center = theme;
   }
   return { ...frameStyle(style, backdrop, true), transition: { ...options, image } };
 }

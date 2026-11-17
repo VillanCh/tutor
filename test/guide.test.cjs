@@ -6,7 +6,38 @@ const path = require('node:path');
 const { startServer } = require('../src/server.cjs');
 const { Store } = require('../src/store.cjs');
 const { TestAccount } = require('./helpers/account.cjs');
-const { GUIDE_VERSION } = require('../src/guide-content.mjs');
+const {
+  GUIDE_VERSION,
+  GUIDE_FEATURES,
+  GUIDE_TARGETS,
+  GUIDE_GROUPS,
+} = require('../src/guide-content.mjs');
+
+test('customization Bento covers real entry points and complete save/review workflows with valid navigation targets', () => {
+  const ids = new Set(GUIDE_FEATURES.map((f) => f.id)),
+    groups = new Set(GUIDE_GROUPS.map((g) => g[0]));
+  assert.equal(ids.size, GUIDE_FEATURES.length);
+  for (const f of GUIDE_FEATURES) {
+    assert(ids.has(f.next));
+    assert(groups.has(f.group));
+    assert(f.steps.length >= 3);
+  }
+  for (const id of ['background', 'layout', 'transition', 'header']) {
+    const f = GUIDE_FEATURES.find((x) => x.id === id);
+    assert.equal(f.group, 'customize');
+    assert.equal(f.target, GUIDE_TARGETS[id]);
+    assert(f.entry && f.action && f.examples.length);
+    const instructions = f.steps.flat().join(' ');
+    assert(instructions.includes('保存') || instructions.includes('应用'));
+    assert(instructions.includes('审核'));
+    assert(instructions.includes('制作'));
+  }
+  assert.equal(GUIDE_TARGETS.background.section, 'frame');
+  assert.equal(GUIDE_TARGETS.transition.section, 'transition');
+  assert.equal(GUIDE_TARGETS.header.section, 'header');
+  assert.equal(GUIDE_TARGETS.branding.section, 'ads');
+  assert.equal(GUIDE_TARGETS.layout.requiresProject, true);
+});
 
 test('first-launch guide is available before login, persists across local ports and cannot bypass project permissions', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tutor-guide-'));
@@ -48,6 +79,11 @@ test('first-launch guide is available before login, persists across local ports 
     const upgraded = new Store(root, account);
     await upgraded.init();
     assert.equal(upgraded.guideState.seen, false, 'a new guide version can be shown again');
+    assert.equal(
+      upgraded.guideState.updated,
+      true,
+      'returning users see the customization update while keeping their workspace',
+    );
   } finally {
     server.close();
   }

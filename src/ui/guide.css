@@ -198,6 +198,155 @@
   gap: 14px;
   align-items: stretch;
 }
+.guide-bento-background,
+.guide-bento-layout,
+.guide-bento-transition,
+.guide-bento-header {
+  grid-column: span 6;
+}
+.guide-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d7b8ed;
+  background: #b685d414;
+  border: 1px solid #b685d433;
+  border-radius: 8px;
+  padding: 11px 13px;
+  margin-top: 18px;
+  font-size: var(--type-caption);
+  line-height: 1.7;
+}
+.guide-entry svg {
+  flex-shrink: 0;
+}
+.guide-custom-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+  color: #aeb9cb;
+  font-size: var(--type-meta);
+}
+.guide-background-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  height: 76px;
+}
+.guide-background-swatches i {
+  border: 1px solid #ffffff24;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #142637, #613a48);
+}
+.guide-background-swatches i:nth-child(2) {
+  background: linear-gradient(135deg, #eff4ef, #bdd6e5);
+}
+.guide-background-swatches i:nth-child(3) {
+  background: linear-gradient(135deg, #f7efdf, #dcc9b3);
+}
+.guide-background-swatches i:nth-child(4) {
+  background: linear-gradient(135deg, #263144, #5f5277);
+}
+.guide-layout-mini,
+.guide-transition-mini,
+.guide-header-mini {
+  border: 1px solid #465064;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 110px;
+  background: linear-gradient(130deg, #25374a, #443146);
+}
+.guide-layout-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+}
+.guide-layout-mini i,
+.guide-layout-mini small {
+  font-style: normal;
+  color: #c8d4e6;
+  font-size: var(--type-meta);
+}
+.guide-layout-mini strong {
+  display: grid;
+  place-items: center;
+  background: #e4e8f1;
+  color: #35435a;
+  min-height: 54px;
+  width: 100%;
+  border-radius: 4px;
+  font-size: var(--type-caption);
+  font-weight: 500;
+}
+.guide-transition-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+}
+.guide-transition-mini small {
+  color: #ffc476;
+}
+.guide-transition-mini strong {
+  font-size: 17px;
+  color: #eef3fb;
+  font-weight: 500;
+}
+.guide-transition-mini span {
+  font-size: var(--type-meta);
+}
+.guide-header-mini {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #e0e7f4;
+}
+.guide-header-mini > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #ffffff12;
+}
+.guide-header-mini i {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d9b6ef;
+  border-radius: 5px;
+  font-style: normal;
+  color: #ead3f7;
+}
+.guide-header-mini strong {
+  font-size: var(--type-meta);
+  font-weight: 500;
+}
+.guide-header-mini > span {
+  padding: 10px;
+  text-align: center;
+  color: #b8c5d9;
+}
+.guide-header-mini > small {
+  padding: 5px;
+  background: #ffffff18;
+  text-align: center;
+  font-size: var(--type-meta);
+}
+@media (max-width: 760px) {
+  .guide-bento-background,
+  .guide-bento-layout,
+  .guide-bento-transition,
+  .guide-bento-header {
+    grid-column: 1/-1;
+  }
+}
 .guide-bento-card {
   position: relative;
   min-width: 0;

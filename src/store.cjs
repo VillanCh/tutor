@@ -38,6 +38,13 @@ class Store {
     try {
       const guide = JSON.parse(await fs.readFile(path.join(this.root, 'guide-state.json'), 'utf8'));
       if (guide.version === GUIDE_VERSION && guide.seen === true) this.guideState.seen = true;
+      else if (
+        Number.isInteger(guide.version) &&
+        guide.version > 0 &&
+        guide.version < GUIDE_VERSION &&
+        guide.seen === true
+      )
+        this.guideState.updated = true;
     } catch (error) {
       if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
     }

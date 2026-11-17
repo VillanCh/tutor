@@ -410,8 +410,19 @@ class Engine extends EventEmitter {
     if (revision != null && revision !== before)
       throw Error('项目已更新，请重新打开框架与品牌设置');
     const branding = await require('./branding.cjs').importBranding(value, this.store.dir(id));
+    const nextOptions = require('./header-options.mjs').applyHeaderVisibility(
+      p.exportOptions,
+      value?.header,
+    );
+    const style = await require('./header-brand.cjs').prepareHeaderStyle(
+      this.store.config.style,
+      branding.header,
+      branding.frame?.surfaces,
+    );
+    require('./frame-layout.cjs').frameLayout(p.info, style, nextOptions);
     if (p.job || p.revision !== before) throw Error('项目已更新，请重新打开框架与品牌设置');
     p.branding = branding;
+    if (nextOptions) p.exportOptions = nextOptions;
     p.revision += 1;
     p.approval = null;
     p.status = p.script ? 'review' : 'draft';
@@ -425,7 +436,13 @@ class Engine extends EventEmitter {
     if (revision !== p.revision) throw Error('项目已更新，请重新打开导出比例设置');
     const next = require('./export-options.mjs').normalizeExportOptions(value);
     const { exportHash, frameLayout } = require('./frame-layout.cjs');
-    frameLayout(p.info, this.store.config.style, next);
+    const style = await require('./header-brand.cjs').prepareHeaderStyle(
+      this.store.config.style,
+      p.branding?.header,
+      p.branding?.frame?.surfaces,
+    );
+    frameLayout(p.info, style, next);
+    if (p.job || revision !== p.revision) throw Error('项目已更新，请重新打开导出比例设置');
     if (exportHash(next) === exportHash(p.exportOptions)) return p;
     p.exportOptions = next;
     p.revision += 1;

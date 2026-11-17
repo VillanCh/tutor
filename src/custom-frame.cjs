@@ -92,7 +92,9 @@ function paintCustomFrame(ctx, layout, scene, plan, style, wrapText) {
     require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
     return;
   }
-  if (l.showHeader) {
+  if (style.header)
+    require('./header-brand.cjs').paintProjectHeader(ctx, layout, scene, plan, style);
+  else if (l.showHeader) {
     const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
     const top = layout.headerTop,
       size = Math.round(l.headerFont * u);
@@ -147,11 +149,12 @@ function paintCustomFrame(ctx, layout, scene, plan, style, wrapText) {
     footer = style.footer;
   if (t.enabled)
     for (const segment of plan.chapterSegments) {
-      if (t.labels) {
+      if (t.labels && require('./header-brand.cjs').footerLabelsAllowed(style)) {
         ctx.font = font(t.fontSize);
         ctx.fillStyle = footer.ink;
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(
+        require('./frame-background.cjs').readableText(
+          ctx,
           ellipsis(
             ctx,
             String(segment.index + 1).padStart(2, '0') + '  ' + segment.title,
@@ -159,6 +162,7 @@ function paintCustomFrame(ctx, layout, scene, plan, style, wrapText) {
           ),
           t.x + segment.x,
           t.labelBaseline,
+          footer,
         );
       }
       ctx.fillStyle = footer.line;

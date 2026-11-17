@@ -8,7 +8,7 @@ import { api, basename } from './workbench';
 import './frame-template.css';
 import './transition.css';
 
-export default function TransitionPanel({ value, setValue, frame, project, disabled }) {
+export default function TransitionPanel({ value, setValue, frame, project, disabled, header }) {
   const id = useId(),
     input = useRef(null);
   const t = transitionDefaults(
@@ -46,6 +46,7 @@ export default function TransitionPanel({ value, setValue, frame, project, disab
     sceneId: selected?.id,
     frame,
     transition: value || t,
+    header,
   });
   useEffect(() => {
     const controller = new AbortController();

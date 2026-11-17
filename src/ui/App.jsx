@@ -70,6 +70,7 @@ import StreamOutput from './StreamOutput';
 import { balanceText, YakcoolAccountCard } from './YakcoolAccount';
 import { readLocal, writeLocal, loadProjectDraft } from './drafts.mjs';
 import { useGuide } from './GuideProvider';
+import { GUIDE_TARGETS } from '../guide-content.mjs';
 import FailurePanel from './FailurePanel';
 import { projectFailure } from '../diagnostics.mjs';
 import { safePercent } from '../progress.mjs';
@@ -154,6 +155,7 @@ function ImportPanel({
   dropVideos,
   chooseKnowledge,
   branding,
+  brandingSection,
   setBranding,
   create,
   pending,
@@ -388,7 +390,13 @@ function ImportPanel({
           <span>TXT / Markdown / JSON / DOCX</span>
         </div>
       </div>
-      <BrandingPanel value={branding} setValue={setBranding} disabled={pending} collapsible />
+      <BrandingPanel
+        value={branding}
+        setValue={setBranding}
+        disabled={pending}
+        collapsible
+        initialSection={brandingSection}
+      />
       {!hasKey && (
         <button className="setup-notice" onClick={openSettings}>
           <Settings2 size={16} />
@@ -960,6 +968,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
   );
   const [brandingDraft, setBrandingDraft] = useState(null);
   const [brandingOpen, setBrandingOpen] = useState(false);
+  const [brandingSection, setBrandingSection] = useState('frame');
   const [exportDraft, setExportDraft] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [inspection, setInspection] = useState(null);
@@ -1575,21 +1584,24 @@ export default function App({ account, refreshAccount, logout, accountPending })
     setKnowledgeDraft(project?.knowledge || knowledge);
     setKnowledgeOpen(true);
   };
-  const showBranding = () => {
-    setBrandingDraft({
-      id: project.id,
-      revision: project.revision,
-      value: brandingDefaults(project.branding),
-    });
+  const showBranding = (section = 'frame') => {
+    setBrandingSection(typeof section === 'string' ? section : 'frame');
+    if (!brandingOpen)
+      setBrandingDraft({
+        id: project.id,
+        revision: project.revision,
+        value: brandingDefaults(project.branding),
+      });
     setBrandingOpen(true);
   };
-  const showExportOptions = (returnToApproval = false) => {
+  const showExportOptions = (returnToApproval = false, section = 'layout') => {
     setExportDraft({
       id: project.id,
       revision: project.revision,
       value: normalizeExportOptions(project.exportOptions),
       returnToApproval,
       restoreApproval: approveOpen,
+      section,
     });
     setApproveOpen(false);
     setExportOpen(true);
@@ -1680,18 +1692,30 @@ export default function App({ account, refreshAccount, logout, accountPending })
         focus('#tutorial-knowledge');
       }
     }
-    if (guideIntent.feature === 'branding') {
-      if (project) showBranding();
+    const guideTarget = GUIDE_TARGETS[guideIntent.feature];
+    if (guideTarget?.surface === 'branding') {
+      if (project) showBranding(guideTarget.section);
       else {
-        newProject();
+        setBrandingSection(guideTarget.section);
         requestAnimationFrame(() => {
           const details = document.querySelector('.import-panel .branding-panel details');
           if (details) {
             details.open = true;
-            details.querySelector('summary')?.focus();
+            (
+              details.querySelector('[data-branding-section="' + guideTarget.section + '"]') ||
+              details.querySelector('summary')
+            )?.focus();
             details.scrollIntoView({ block: 'nearest' });
           }
         });
+      }
+    }
+    if (guideIntent.feature === 'layout') {
+      setMobilePane('preview');
+      if (project) showExportOptions(false, 'layout');
+      else {
+        focus('.video-dropzone');
+        toast('先导入视频创建教程，再调整比例与排版。当前导入信息会保留。');
       }
     }
     if (guideIntent.feature === 'chat') {
@@ -1736,7 +1760,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
         setView('video');
         setOutput(true);
       } else if (project?.script && !busy) {
-        showExportOptions();
+        showExportOptions(false, 'canvas');
       } else {
         setView(project?.script ? 'script' : 'activity');
         toast('完成制作后，即可预览和保存视频。');
@@ -2155,6 +2179,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                   dropVideos,
                   chooseKnowledge,
                   branding,
+                  brandingSection,
                   setBranding,
                   create,
                   pending,
@@ -2558,6 +2583,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                 setValue={(value) => setBrandingDraft((draft) => ({ ...draft, value }))}
                 disabled={busy || pending}
                 project={project}
+                initialSection={brandingSection}
               />
             )}
           </div>
@@ -2587,6 +2613,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
           </DialogHeader>
           {exportDraft && project && (
             <ExportPanel
+              initialSection={exportDraft.section || 'layout'}
               project={project}
               value={exportDraft.value}
               setValue={(value) => setExportDraft((draft) => ({ ...draft, value }))}

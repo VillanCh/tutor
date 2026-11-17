@@ -85,22 +85,13 @@ function customFrameLayout(info, style, options, width, height) {
   };
 }
 
-function fitBlock(ctx, text, box, size, color, wrapText) {
-  let lines;
-  while (size > 10) {
-    lines = wrapText(ctx, text, size, box.width);
-    if (lines.length * size * 1.35 <= box.height) break;
-    size--;
-  }
-  ctx.font = font(size);
-  ctx.fillStyle = color;
-  ctx.textBaseline = 'top';
-  lines.forEach((line, i) => ctx.fillText(line, box.x, box.y + i * size * 1.35));
-}
-
 function paintCustomFrame(ctx, layout, scene, plan, style, wrapText) {
   const { width: W, height: H, unit: u, margin: x, options: l } = layout;
   paintFrameBackground(ctx, style, W, H);
+  if (scene.kind === 'title' && !require('./transition.cjs').transitionChrome(style)) {
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
+    return;
+  }
   if (l.showHeader) {
     const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
     const top = layout.headerTop,
@@ -131,30 +122,7 @@ function paintCustomFrame(ctx, layout, scene, plan, style, wrapText) {
     );
   }
   if (scene.kind === 'title') {
-    const theme = style.titleTheme;
-    const top = layout.headerHeight + 24 * u;
-    const bottom = layout.caption.enabled
-      ? layout.caption.y
-      : layout.timeline.enabled
-        ? layout.timeline.labelBaseline - 30 * u
-        : H - 30 * u;
-    ctx.font = brandFont(Math.round(l.titleFont * 0.7 * u));
-    ctx.fillStyle = theme.accent;
-    ctx.textBaseline = 'top';
-    ctx.fillText(String(scene.chapter + 1).padStart(2, '0') + '.', x + 12 * u, top);
-    fitBlock(
-      ctx,
-      scene.heading,
-      {
-        x: x + 12 * u,
-        y: top + l.titleFont * u,
-        width: W - 2 * x - 24 * u,
-        height: Math.max(20, bottom - top - l.titleFont * u - 24 * u),
-      },
-      Math.round(l.titleFont * u),
-      theme.ink,
-      wrapText,
-    );
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
   } else {
     const r = style.videoRect || {
       x: layout.video_x,

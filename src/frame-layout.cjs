@@ -197,6 +197,10 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
     );
   const { width: W, height: H, margin: m, unit: u } = layout;
   paintFrameBackground(ctx, style, W, H);
+  if (scene.kind === 'title' && !require('./transition.cjs').transitionChrome(style)) {
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
+    return;
+  }
   const brand = { enabled: true, name: 'YAK', tagline: 'TUTORIAL STUDIO', ...style.brand };
   if (brand.enabled) {
     ctx.font = brandFont(Math.round(38 * u));
@@ -211,33 +215,7 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
     ctx.fillText(ellipsis(ctx, brand.tagline, W - 2 * m - 230 * u), m + u, 76 * u);
   }
   if (scene.kind === 'title') {
-    style = { ...style, ...style.titleTheme };
-    ctx.save();
-    ctx.strokeStyle = style.line || '#E6DED2';
-    ctx.lineWidth = Math.max(1, 1.4 * u);
-    for (let k = 0; k < 5; k++) {
-      ctx.beginPath();
-      ctx.ellipse(W * 1.05 + k * 34 * u, H * 0.44, W * 0.48 + k * 28 * u, H * 0.46, -0.3, 0.6, 5.2);
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.fillStyle = style.secondary_accent;
-    ctx.font = font(Math.round(18 * u));
-    ctx.textBaseline = 'top';
-    ctx.fillText('TUTOR / PRACTICAL GUIDE', m + 8 * u, H * 0.23);
-    ctx.font = brandFont(Math.round(100 * u));
-    ctx.fillStyle = style.accent;
-    ctx.fillText(String(scene.chapter + 1).padStart(2, '0') + '.', m, H * 0.29);
-    fittedText(
-      ctx,
-      scene.heading,
-      { x: m, y: H * 0.43, width: W - 2 * m, height: layout.caption.y - H * 0.43 - 90 * u },
-      Math.round(76 * u),
-      style.ink,
-    );
-    ctx.font = font(Math.round(23 * u));
-    ctx.fillStyle = style.muted || '#81786D';
-    ctx.fillText(ellipsis(ctx, plan.title || '', W - 2 * m), m, layout.caption.y - 58 * u);
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
   } else {
     if (layout.stacked) {
       ctx.font = font(Math.round(18 * u));
@@ -301,29 +279,12 @@ function paintAdaptiveFrame(ctx, layout, scene, plan, style) {
 function paintLegacyFrame(ctx, layout, scene, plan, style) {
   const { width: W, height: H, video_x: x, video_y: y, video_width: vw, video_height: vh } = layout;
   paintFrameBackground(ctx, style, W, H);
+  if (scene.kind === 'title' && !require('./transition.cjs').transitionChrome(style)) {
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
+    return;
+  }
   if (scene.kind === 'title') {
-    const theme = style.titleTheme || style;
-    ctx.strokeStyle = theme.line;
-    ctx.lineWidth = 2;
-    for (let k = 0; k < 6; k++) {
-      ctx.beginPath();
-      ctx.ellipse(W * 0.92 + k * 34, H * 0.4, 350 + k * 34, H * 0.7, 0, 0.7, 4.5);
-      ctx.stroke();
-    }
-    ctx.textBaseline = 'top';
-    ctx.font = font(21);
-    ctx.fillStyle = theme.secondary_accent;
-    ctx.fillText('TUTOR / PRACTICAL GUIDE', 74, H * 0.21);
-    ctx.font = font(90);
-    ctx.fillStyle = theme.accent;
-    ctx.fillText(String(scene.chapter + 1).padStart(2, '0') + '.', 70, H * 0.285);
-    ctx.fillStyle = theme.ink;
-    wrapText(ctx, scene.heading, 82, W - 140)
-      .slice(0, 3)
-      .forEach((line, index) => ctx.fillText(line, 70, H * 0.43 + index * 102));
-    ctx.font = font(27);
-    ctx.fillStyle = theme.muted;
-    ctx.fillText(ellipsis(ctx, plan.title || '', W - 150), 76, H * 0.77);
+    require('./transition.cjs').paintTransitionContent(ctx, layout, scene, plan, style);
   } else {
     const rect = style.videoRect || { x, y, width: vw, height: vh };
     ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
@@ -345,6 +306,7 @@ async function framePreview({
   watermark,
   title = false,
   frame,
+  transition,
 }) {
   const layout = frameLayout(info, style, exportOptions);
   const backdrop = await prepareFrameBackground(layout, style, frame);
@@ -358,6 +320,14 @@ async function framePreview({
     ...scene,
     kind: title ? 'title' : 'action',
   };
+  if (title)
+    style = await require('./transition.cjs').prepareTransition(
+      layout,
+      style,
+      frame,
+      transition,
+      selected,
+    );
   const plan = {
     title: script?.title || 'HTTP 请求与响应核对',
     chapters: script?.chapters || ['构造请求', '核对响应', '总结'],
@@ -410,7 +380,7 @@ async function framePreview({
   ctx.fillStyle = style.muted;
   ctx.textBaseline = 'top';
   const clockLabel = '00:12 / 01:30';
-  if (timer.enabled !== false)
+  if (timer.enabled !== false && (!title || require('./transition.cjs').transitionChrome(style)))
     ctx.fillText(
       clockLabel,
       timer.timeX + timer.timeWidth - ctx.measureText(clockLabel).width,
@@ -419,7 +389,10 @@ async function framePreview({
   const rail = layout.timeline;
   ctx.fillStyle = style.footer.accent;
   for (const segment of plan.chapterSegments.filter(
-    (s) => rail.enabled !== false && s.index <= selected.chapter,
+    (s) =>
+      rail.enabled !== false &&
+      (!title || require('./transition.cjs').transitionChrome(style)) &&
+      s.index <= selected.chapter,
   )) {
     ctx.beginPath();
     ctx.roundRect(
@@ -436,7 +409,10 @@ async function framePreview({
   ctx.font = font(cap.size);
   ctx.fillStyle = style.footer.ink;
   ctx.textBaseline = 'alphabetic';
-  (cap.enabled === false ? [] : wrapText(ctx, selected.narration || '', cap.size, cap.textWidth))
+  (cap.enabled === false || (title && !require('./transition.cjs').transitionChrome(style))
+    ? []
+    : wrapText(ctx, selected.narration || '', cap.size, cap.textWidth)
+  )
     .slice(0, cap.lines || 2)
     .forEach((line, i) =>
       ctx.fillText(

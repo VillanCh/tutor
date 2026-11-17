@@ -5,7 +5,7 @@ import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { api } from './workbench';
 
-export default function LayoutPanel({ value, setValue, disabled }) {
+export default function LayoutPanel({ value, setValue, disabled, transitionConfigured }) {
   const id = useId(),
     l = normalizeLayout(value);
   const [presets, setPresets] = useState([]),
@@ -169,11 +169,16 @@ export default function LayoutPanel({ value, setValue, disabled }) {
           <div className="layout-fields">
             {field('headerHeight', '顶部栏高度')}
             {field('headerFont', '顶部标题字号')}
-            {field('titleFont', '章节过场字号')}
+            {!transitionConfigured && field('titleFont', '章节过场字号')}
             {field('chapterFont', '章节名称字号')}
             {field('chapterGap', '章节分段间距')}
             {field('railHeight', '进度条粗细')}
           </div>
+          {transitionConfigured && (
+            <p className="layout-help">
+              章节过场文字已独立设置，可在“框架与品牌 → 章节过场”中调整。
+            </p>
+          )}
         </details>
         <div className="layout-library">
           <label htmlFor={id + '-preset-name'}>保存为我的排版预设</label>

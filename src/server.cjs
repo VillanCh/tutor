@@ -123,6 +123,18 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         return json(await store.markGuideSeen(d.version));
       }
       if (parts[0] === 'api') await account.requireLogin();
+      if (url.pathname === '/api/transition-templates') {
+        const templates = require('./transition-templates.cjs');
+        if (req.method === 'GET') return json(await templates.listTemplates(store.root));
+        if (req.method === 'POST') {
+          const d = await readJson(req);
+          if (d.action === 'delete') {
+            await templates.deleteTemplate(store.root, d.id);
+            return json({ deleted: true });
+          }
+          return json(await templates.saveTemplate(store.root, d.name, d.transition));
+        }
+      }
       if (url.pathname === '/api/layout-presets') {
         const presets = require('./layout-presets.cjs');
         if (req.method === 'GET') return json(await presets.listLayoutPresets(store.root));
@@ -240,16 +252,19 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
         const d = await readJson(req);
         const { normalizeBranding, brandingPreview } = require('./branding.cjs');
         const projectBranding = d.projectId ? store.get(d.projectId).branding : null;
-        const { watermark, frame } = normalizeBranding({
+        const { watermark, frame, transition } = normalizeBranding({
           watermark: d.watermark,
           frame: d.frame ?? projectBranding?.frame,
+          transition: d.transition ?? projectBranding?.transition,
         });
         let background, info, heading, caption, exportOptions, script, selectedScene;
         if (d.projectId) {
           const project = store.get(d.projectId);
-          const scene = project.script?.scenes.find(
-            (item) => (item.kind === 'title') === (d.kind === 'title'),
-          );
+          const scene =
+            project.script?.scenes.find(
+              (item) => item.id === d.sceneId && (item.kind === 'title') === (d.kind === 'title'),
+            ) ||
+            project.script?.scenes.find((item) => (item.kind === 'title') === (d.kind === 'title'));
           const source = findSource(project, scene?.source_id);
           info = project.info;
           script = project.script;
@@ -285,6 +300,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
           await brandingPreview({
             watermark,
             frame,
+            transition,
             title: d.kind === 'title',
             background,
             info,
@@ -345,6 +361,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
             script: p.script,
             watermark: p.branding?.watermark,
             frame: p.branding?.frame,
+            transition: p.branding?.transition,
           }),
         );
       }

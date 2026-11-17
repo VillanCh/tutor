@@ -6,7 +6,7 @@ import { FRAME_PRESETS, FRAME_DEFAULTS } from '../branding-options.mjs';
 import { api, basename } from './workbench';
 import './frame-template.css';
 
-export default function FrameTemplatePanel({ value, setValue, project, disabled }) {
+export default function FrameTemplatePanel({ value, setValue, project, disabled, transition }) {
   const id = useId(),
     input = useRef(null);
   const [templates, setTemplates] = useState([]);
@@ -29,6 +29,7 @@ export default function FrameTemplatePanel({ value, setValue, project, disabled 
   const request = JSON.stringify({
     projectId: project?.id,
     frame: value,
+    transition,
     kind,
     revision: project?.revision,
   });

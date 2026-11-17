@@ -98,6 +98,7 @@ export default function ExportPanel({ project, value, setValue, disabled }) {
         </div>
         <div hidden={section !== 'layout'}>
           <LayoutPanel
+            transitionConfigured={project.branding?.transition?.enabled}
             value={options.layout}
             disabled={disabled}
             setValue={(layout) => {

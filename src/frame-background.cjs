@@ -165,4 +165,6 @@ module.exports = {
   paintFrameBackground,
   luminance,
   ratio,
+  regionTheme,
+  scrim,
 };

@@ -14,12 +14,20 @@ const { FFMPEG, run, probe, wav } = require('./media.cjs');
 const { font: contentFont } = require('./fonts.cjs');
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 const VIDEO = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
-const LABELS = { intro: '片头广告', outro: '片尾广告', watermark: '水印 Logo', frame: '框架背景' };
+const LABELS = {
+  intro: '片头广告',
+  outro: '片尾广告',
+  watermark: '水印 Logo',
+  frame: '框架背景',
+  transition: '章节过场图片',
+};
 
 function normalizeBranding(value) {
   if (value != null && (typeof value !== 'object' || Array.isArray(value)))
     throw Error('广告与水印设置格式无效');
   const b = brandingDefaults(value);
+  if (b.transition != null)
+    b.transition = require('./transition-options.mjs').normalizeTransition(b.transition);
   const f = b.frame;
   if (typeof f.enabled !== 'boolean' || typeof f.path !== 'string') throw Error('框架背景设置无效');
   if (!Object.hasOwn(FRAME_PRESETS, f.preset)) throw Error('请选择有效的视频框架模板');
@@ -101,20 +109,33 @@ async function hashAsset(file) {
   return hash.digest('hex');
 }
 
-function assetKeys(b) {
-  return ['intro', 'outro', 'watermark', 'frame'].filter(
-    (key) =>
-      b[key].enabled &&
-      (key !== 'watermark' || b[key].type === 'image') &&
-      (key !== 'frame' || b[key].preset === 'custom'),
-  );
+function assetEntries(b, original = b) {
+  const entries = ['intro', 'outro', 'watermark', 'frame']
+    .filter(
+      (key) =>
+        b[key].enabled &&
+        (key !== 'watermark' || b[key].type === 'image') &&
+        (key !== 'frame' || b[key].preset === 'custom'),
+    )
+    .map((key) => ({ item: b[key], original: original?.[key], label: LABELS[key] }));
+  const t = b.transition;
+  if (t?.enabled) {
+    if (t.background === 'custom' || t.mode === 'image')
+      entries.push({ item: t, original: original?.transition, label: LABELS.transition });
+    for (const card of t.cards.filter((c) => c.mode === 'image'))
+      entries.push({
+        item: card,
+        original: original?.transition?.cards?.find((c) => c.id === card.id),
+        label: '本章节过场图片',
+      });
+  }
+  return entries;
 }
 
 async function importBranding(value, dir) {
   const b = normalizeBranding(value);
-  for (const key of assetKeys(b)) {
-    const item = b[key],
-      file = path.resolve(item.path);
+  for (const { item, original, label } of assetEntries(b, value)) {
+    const file = path.resolve(item.path);
     let info;
     try {
       const stat = await fs.stat(file);
@@ -133,7 +154,7 @@ async function importBranding(value, dir) {
       }
     } catch (error) {
       throw Error(
-        LABELS[key] +
+        label +
           '无法导入，请重新选择可用文件：' +
           path.basename(file) +
           '（' +
@@ -152,8 +173,8 @@ async function importBranding(value, dir) {
       info,
     });
     // Existing imported names remain readable when saving another setting.
-    if (typeof value?.[key]?.name === 'string' && value[key].name.trim())
-      item.name = value[key].name.split(/[\\/]/).at(-1).slice(0, 200);
+    if (typeof original?.name === 'string' && original.name.trim())
+      item.name = original.name.split(/[\\/]/).at(-1).slice(0, 200);
   }
   return b;
 }
@@ -163,11 +184,26 @@ function brandingHash(value) {
   const active = Object.fromEntries(
     Object.entries(b)
       .filter(
-        ([key, item]) => key !== 'frame' || JSON.stringify(item) !== JSON.stringify(FRAME_DEFAULTS),
+        ([key, item]) =>
+          (key !== 'frame' || JSON.stringify(item) !== JSON.stringify(FRAME_DEFAULTS)) &&
+          (key !== 'transition' || item.enabled),
       )
       .map(([key, item]) => [
         key,
-        item.enabled ? { ...item, hash: value?.[key]?.hash || null } : { enabled: false },
+        item.enabled
+          ? {
+              ...item,
+              ...(key === 'transition'
+                ? {
+                    cards: item.cards.map((c) => ({
+                      ...c,
+                      hash: value?.transition?.cards?.find((x) => x.id === c.id)?.hash || null,
+                    })),
+                  }
+                : {}),
+              hash: value?.[key]?.hash || null,
+            }
+          : { enabled: false },
       ]),
   );
   return crypto.createHash('sha256').update(JSON.stringify(active)).digest('hex');
@@ -175,15 +211,15 @@ function brandingHash(value) {
 
 async function verifyBranding(value) {
   const b = normalizeBranding(value);
-  for (const key of assetKeys(b)) {
+  for (const { item, original, label } of assetEntries(b, value)) {
     let hash;
     try {
-      hash = await hashAsset(b[key].path);
+      hash = await hashAsset(item.path);
     } catch {
       /* Prompt for a replacement below. */
     }
-    if (!value[key].hash || hash !== value[key].hash)
-      throw Error(LABELS[key] + '文件已变更，请重新选择并确认');
+    if (!original?.hash || hash !== original.hash)
+      throw Error(label + '文件已变更，请重新选择并确认');
   }
 }
 
@@ -283,6 +319,7 @@ async function brandingPreview({
   caption,
   exportOptions,
   frame,
+  transition,
   title = false,
   script,
   selectedScene,
@@ -293,6 +330,7 @@ async function brandingPreview({
     exportOptions,
     background,
     frame,
+    transition,
     title,
     scene: selectedScene || { heading, ...(caption != null ? { narration: caption } : {}) },
     script,

@@ -107,7 +107,6 @@ async function render({
   );
   const frameStyle = require('./frame-background.cjs').frameStyle;
   const BG = style.background,
-    ACC = backdrop.bottom.accent,
     MUTED = backdrop.top.muted;
   const plan = schedule(
     script,
@@ -206,7 +205,18 @@ async function render({
         hold,
         signal,
       );
-    const sceneStyle = frameStyle(baseStyle, backdrop, title);
+    const sceneStyle = title
+      ? await require('./transition.cjs').prepareTransition(
+          layout,
+          baseStyle,
+          branding?.frame,
+          branding?.transition,
+          s,
+        )
+      : frameStyle(baseStyle, backdrop, false);
+    const chrome = !title || require('./transition.cjs').transitionChrome(sceneStyle);
+    s.transitionChrome = chrome;
+    s.timerInk = sceneStyle.muted;
     if (!title)
       sceneStyle.videoRect = containRect(input.info, { x: VX, y: VY, width: VW, height: VH });
     await png(overlay, W, H, (ctx) => {
@@ -228,9 +238,9 @@ async function render({
         const span = (s.voice_duration * weights[j]) / sum,
           file = path.join(assets, 'caption-' + i + '-' + j + '.png');
         await png(file, W, CAPTION_H, (ctx) => {
-          if (caption.enabled === false) return;
+          if (caption.enabled === false || !chrome) return;
           if (!layout.legacy && !layout.custom) {
-            ctx.fillStyle = backdrop.bottom.line;
+            ctx.fillStyle = sceneStyle.footer.line;
             ctx.fillRect(layout.margin, 0, W - layout.margin * 2, Math.max(1, layout.unit));
           }
           wrap(ctx, chunks[j], caption.size, caption.textWidth)
@@ -238,7 +248,7 @@ async function render({
             .forEach((line, k) => {
               ctx.font = font(caption.size);
               ctx.textBaseline = 'alphabetic';
-              ctx.fillStyle = backdrop.bottom.ink;
+              ctx.fillStyle = sceneStyle.footer.ink;
               ctx.fillText(
                 line,
                 (W - ctx.measureText(line).width) / 2,
@@ -262,10 +272,10 @@ async function render({
     }
     const status = path.join(assets, 'status-' + i + '.png');
     await png(status, header.timeWidth, header.statusHeight, (ctx) => {
-      if (header.enabled === false) return;
+      if (header.enabled === false || !chrome) return;
       ctx.font = font(header.statusFont);
       ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = MUTED;
+      ctx.fillStyle = sceneStyle.muted;
       ctx.fillText(
         '无声观察',
         header.timeWidth - ctx.measureText('无声观察').width,
@@ -418,7 +428,7 @@ async function render({
       .join('+');
     vf +=
       'color=c=' +
-      ACC +
+      sceneStyle.footer.accent +
       ':s=' +
       timeline.width +
       'x' +
@@ -435,7 +445,9 @@ async function render({
       timeline.x +
       ':' +
       timeline.y +
-      ':shortest=1[comp];';
+      ":shortest=1:enable='" +
+      (chrome ? '1' : '0') +
+      "'[comp];";
     vf +=
       s.transition === 'fade'
         ? '[comp]fade=t=in:st=0:d=0.35:color=' +
@@ -557,7 +569,8 @@ async function render({
         if (header.enabled === false) return;
         const label = clock(t) + ' / ' + clock(Math.round(plan.total_duration));
         ctx.font = font(header.timeFont);
-        ctx.fillStyle = MUTED;
+        ctx.fillStyle =
+          plan.scenes.find((s) => t >= s.offset && t < s.offset + s.duration)?.timerInk || MUTED;
         ctx.textBaseline = 'alphabetic';
         ctx.fillText(label, header.timeWidth - ctx.measureText(label).width, header.timeFont + 7);
       },
@@ -586,7 +599,12 @@ async function render({
         header.timeX +
         ':' +
         header.timeY +
-        ':eof_action=repeat[v]',
+        ":eof_action=repeat:enable='" +
+        (plan.scenes
+          .filter((s) => !s.transitionChrome)
+          .map((s) => 'not(between(t,' + s.offset + ',' + (s.offset + s.duration) + '))')
+          .join('*') || '1') +
+        "'[v]",
       '-map',
       '[v]',
       '-map',

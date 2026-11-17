@@ -422,11 +422,7 @@ function ScenePreview({ project, scene, onExpand }) {
     video.currentTime = frameTime(scene, project);
   };
   useEffect(seek, [scene?.id, scene?.source_id, scene?.source_start, scene?.freeze_at, project.id]);
-  if (
-    scene?.kind === 'title' &&
-    project.exportOptions?.aspect &&
-    project.exportOptions.aspect !== 'auto'
-  )
+  if (scene?.kind === 'title')
     return (
       <div className="scene-media title-export-media">
         <ExportPreview
@@ -435,15 +431,6 @@ function ScenePreview({ project, scene, onExpand }) {
           kind="title"
           sceneId={scene.id}
         />
-      </div>
-    );
-  if (scene?.kind === 'title')
-    return (
-      <div className="scene-media title-media">
-        <span className="yak-mark">YAK / TUTORIAL</span>
-        <span className="title-chapter">CHAPTER {String(scene.chapter + 1).padStart(2, '0')}</span>
-        <h3 title={scene.heading}>{scene.heading}</h3>
-        <span className="title-caption">章节标题卡 · 成片沿用 Yak 风格</span>
       </div>
     );
   return (
@@ -629,6 +616,15 @@ function Storyboard({
           disabled={!!project.job || pending}
           onChange={(e) => updateScene(selected, 'heading', e.target.value)}
         />
+        {scene.kind === 'title' && (
+          <Input
+            aria-label="当前过场副标题"
+            placeholder="过场副标题，留空沿用教程标题"
+            value={scene.subtitle || ''}
+            disabled={!!project.job || pending}
+            onChange={(e) => updateScene(selected, 'subtitle', e.target.value)}
+          />
+        )}
         <SectionLabel
           trailing={
             <span className="voice-chip">
@@ -2550,9 +2546,9 @@ export default function App({ account, refreshAccount, logout, accountPending })
       <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
         <DialogContent className="branding-dialog">
           <DialogHeader>
-            <DialogTitle>视频框架、广告与水印</DialogTitle>
+            <DialogTitle>视频框架、章节过场与品牌</DialogTitle>
             <DialogDescription>
-              上传背景制作专属框架，统一设置片头、片尾与水印。保存后重新审核制作。
+              设置正文与过场背景、文字布局和章节图片，统一片头、片尾与水印。保存后重新审核制作。
             </DialogDescription>
           </DialogHeader>
           <div className="branding-dialog-body">

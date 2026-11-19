@@ -58,7 +58,7 @@ async function probe(file, signal) {
     { signal },
   );
   const info = JSON.parse(stdout),
-    v = info.streams.find((s) => s.codec_type === 'video'),
+    v = info.streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic),
     a = info.streams.find((s) => s.codec_type === 'audio');
   const rotation = Number(
     v?.tags?.rotate ?? v?.side_data_list?.find((item) => item.rotation != null)?.rotation ?? 0,
@@ -92,7 +92,7 @@ async function analysisVideo(source, target, signal, progress) {
       '-i',
       source,
       '-map',
-      '0:v:0',
+      '0:V:0',
       '-map',
       '0:a?',
       '-vf',
@@ -129,6 +129,8 @@ async function frame(source, seconds, target, signal) {
       String(seconds),
       '-i',
       source,
+      '-map',
+      '0:V:0',
       '-vf',
       'scale=trunc(iw*sar/2)*2:ih,setsar=1',
       '-frames:v',

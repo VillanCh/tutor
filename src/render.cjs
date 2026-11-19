@@ -79,6 +79,7 @@ async function render({
   script,
   audio,
   branding,
+  cover,
   exportOptions,
   config,
   dir,
@@ -731,6 +732,20 @@ async function render({
     if (mae > 4) throw Error('成片章节位置不匹配：' + s.id);
     headers.push({ scene: s.id, mae });
   }
+  progress?.(0.995, '生成视频封面');
+  const coverResult = await require('./cover.cjs').writeCover({
+    source: output,
+    target: output,
+    dir,
+    value: cover,
+    script,
+    info,
+    style: config.style,
+    exportOptions,
+    branding,
+    canvas: plan.canvas,
+    signal,
+  });
   await fs.writeFile(path.join(dir, 'edit-plan.json'), JSON.stringify(plan, null, 2));
   const result = {
     passed: true,
@@ -741,9 +756,10 @@ async function render({
     decodedSpeechGaps: gaps,
     sceneHeaderChecks: headers,
     ...(brandingCheck ? { branding: brandingCheck } : {}),
+    cover: coverResult,
   };
   await fs.writeFile(path.join(dir, 'verification.json'), JSON.stringify(result, null, 2));
   progress?.(1, '视频已完成');
-  return { plan, verification: result, output };
+  return { plan, verification: result, output, cover: coverResult };
 }
 module.exports = { render, stamp, captionChunks };

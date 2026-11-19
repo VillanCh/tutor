@@ -201,6 +201,7 @@
 .guide-bento-background,
 .guide-bento-layout,
 .guide-bento-transition,
+.guide-bento-cover,
 .guide-bento-header {
   grid-column: span 6;
 }
@@ -343,6 +344,7 @@
   .guide-bento-background,
   .guide-bento-layout,
   .guide-bento-transition,
+  .guide-bento-cover,
   .guide-bento-header {
     grid-column: 1/-1;
   }

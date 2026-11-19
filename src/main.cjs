@@ -119,7 +119,7 @@ app
     ipcMain.handle('pick-branding', async (event, kind) => {
       local(event);
       await account.requireLogin();
-      if (!['intro', 'outro', 'watermark', 'frame', 'transition', 'header'].includes(kind))
+      if (!['intro', 'outro', 'watermark', 'frame', 'transition', 'header', 'cover'].includes(kind))
         throw Error('素材类型无效');
       const r = await dialog.showOpenDialog(window, {
         title: {
@@ -129,16 +129,17 @@ app
           frame: '选择视频框架背景',
           transition: '选择章节过场背景或完整过场图片',
           header: '选择左上角品牌 Logo / Icon',
+          cover: '选择视频封面图片',
         }[kind],
         properties: ['openFile'],
         filters: [
           {
-            name: ['frame', 'transition', 'header'].includes(kind)
+            name: ['frame', 'transition', 'header', 'cover'].includes(kind)
               ? '背景图片'
               : kind === 'watermark'
                 ? 'Logo 图片'
                 : '广告视频或图片',
-            extensions: ['watermark', 'frame', 'transition', 'header'].includes(kind)
+            extensions: ['watermark', 'frame', 'transition', 'header', 'cover'].includes(kind)
               ? ['png', 'jpg', 'jpeg', 'webp']
               : ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp'],
           },

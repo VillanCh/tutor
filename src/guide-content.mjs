@@ -1,4 +1,4 @@
-export const GUIDE_VERSION = 2;
+export const GUIDE_VERSION = 3;
 export const GUIDE_GROUPS = [
   ['all', '全部功能'],
   ['start', '从素材开始'],
@@ -13,6 +13,7 @@ export const GUIDE_TARGETS = {
   transition: { surface: 'branding', section: 'transition' },
   branding: { surface: 'branding', section: 'ads' },
   layout: { surface: 'export', section: 'layout', requiresProject: true },
+  cover: { surface: 'cover', requiresProject: true },
 };
 
 export const GUIDE_FEATURES = [
@@ -279,6 +280,45 @@ export const GUIDE_FEATURES = [
       '透明 PNG 图标选择自动配色，随亮暗背景匹配。',
     ],
     note: 'Logo 等比完整显示，尺寸会适配 Header 高度。原色适合完整品牌图，自动深浅色适合透明图标。整图过场仍按其专属设置展示。',
+    next: 'cover',
+  },
+  {
+    id: 'cover',
+    group: 'customize',
+    eyebrow: '客制化 / 封面',
+    title: '用一张封面，讲清这堂课。',
+    short: '自动生成标题封面，也能上传自己的设计。',
+    icon: 'image',
+    visual: 'cover',
+    tags: ['自动标题', '上传封面', '成片直接更新'],
+    action: '去设置视频封面',
+    entry: '项目 → 视频封面；或 视频 → 教学成片 → 视频封面',
+    target: GUIDE_TARGETS.cover,
+    purpose:
+      '适合让教程在列表与发布平台中更容易辨认。封面是一张独立图片，不增加片头片尾，也不改变视频时长。',
+    steps: [
+      [
+        '选择封面来源',
+        '打开“视频封面”，选择自动标题封面、上传自制封面，或不使用封面。自动封面跟随教程标题、背景与品牌。',
+      ],
+      [
+        '整理标题与画面',
+        '自动封面可以填写标题、副标题，选择亮色、暗色及文字对齐。自制图片支持 PNG、JPG、WebP，可完整显示或等比铺满，也可叠加标题。',
+      ],
+      [
+        '保存并应用',
+        '制作前保存设置，导出时自动生成；已有成片点击“保存并更新成片封面”，直接更新封面，无需重新配音或审核制作，字幕和章节时序保持一致。',
+      ],
+      [
+        '下载封面用于发布',
+        '成片下方点击“封面 JPG”下载 cover.jpg，发布平台可单独上传。也可勾选“同时写入 MP4 封面”；选择“不使用封面”可移除封面。',
+      ],
+    ],
+    examples: [
+      '用“Yakit HTTP 请求与响应核对”作为封面标题。',
+      '上传设计好的整张封面，关闭叠加标题以保留原图。',
+    ],
+    note: '部分播放器会自行截取视频缩略图，发布平台可以手动使用 cover.jpg。更新历史成片的封面时，自动标题沿用该成片剧本；原视频和原有片头片尾保留。',
     next: 'branding',
   },
   {
@@ -338,7 +378,7 @@ export const GUIDE_FEATURES = [
       ],
       [
         '保存需要的文件',
-        '点击「保存视频」导出 MP4。字幕、剧本和剪辑时间表可分别下载；桌面版也能打开输出目录。',
+        '点击「保存视频」导出 MP4。封面 JPG、字幕、剧本和剪辑时间表可分别下载；桌面版也能打开输出目录。需要调整封面时点击“视频封面”，可以直接更新已有成片。',
       ],
     ],
     examples: [

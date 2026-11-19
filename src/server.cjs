@@ -330,6 +330,21 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
           }),
         );
       }
+      if (url.pathname === '/api/cover/preview' && req.method === 'POST') {
+        const d = await readJson(req),
+          p = store.get(d.projectId),
+          cover = require('./cover.cjs');
+        if (d.revision !== p.revision) throw Error('项目已更新，请重新打开封面设置');
+        const result = await cover.coverImage({
+          value: d.cover,
+          ...(await cover.coverContext(p, store.config)),
+        });
+        return json({
+          ...result,
+          bytes: undefined,
+          image: result.bytes ? 'data:image/jpeg;base64,' + result.bytes.toString('base64') : null,
+        });
+      }
       if (url.pathname === '/api/export/preview' && req.method === 'POST') {
         const d = await readJson(req);
         const options = require('./export-options.mjs').normalizeExportOptions(d.exportOptions);
@@ -418,6 +433,7 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
               'verification.json',
               'approval.json',
               'narration.wav',
+              'cover.jpg',
             ];
             const name = url.searchParams.get('file') || 'tutorial.mp4';
             if (!allowed.includes(name)) throw Error('文件不可访问');
@@ -488,6 +504,10 @@ async function startServer({ dataDir, account = new YakcoolAccount(), port = 0 }
           if (action === 'export-settings')
             return json(
               store.public(await engine.saveExportOptions(p.id, d.exportOptions, d.revision)),
+            );
+          if (action === 'cover-settings')
+            return json(
+              store.public(await engine.saveCover(p.id, d.cover, d.revision, d.coverRevision)),
             );
           if (action === 'approve')
             return json(

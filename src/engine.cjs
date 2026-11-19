@@ -452,6 +452,88 @@ class Engine extends EventEmitter {
     this.publish(p, { stage: '导出画布已保存，请重新审核制作' });
     return p;
   }
+  async saveCover(id, value, revision, coverRevision) {
+    const p = this.store.get(id);
+    if (p.job) throw Error('请等待当前任务结束后修改封面');
+    if (revision !== p.revision || coverRevision !== (p.coverRevision || 0))
+      throw Error('项目或封面已更新，请重新打开封面设置');
+    const previousProgress = { ...p.progress },
+      controller = new AbortController();
+    let dir;
+    p.job = { id: crypto.randomUUID(), label: '更新视频封面', startedAt: new Date().toISOString() };
+    this.controllers.set(id, controller);
+    this.publish(p, { stage: '生成并写入视频封面' });
+    try {
+      const tools = require('./cover.cjs');
+      const cover = await tools.importCover(value, this.store.dir(id));
+      let output = p.output;
+      if (output) {
+        dir = path.join(this.store.dir(id), 'output-cover-' + crypto.randomUUID());
+        await fs.mkdir(dir);
+        for (const file of [
+          'subtitles.srt',
+          'script.json',
+          'edit-plan.json',
+          'verification.json',
+          'approval.json',
+          'narration.wav',
+          'config.json',
+        ]) {
+          try {
+            await fs.copyFile(path.join(output.dir, file), path.join(dir, file));
+          } catch (e) {
+            if (e.code !== 'ENOENT') throw e;
+          }
+        }
+        const context = await tools.coverContext(p, this.store.config);
+        const summary = await tools.writeCover({
+          source: output.path,
+          target: path.join(dir, 'tutorial.mp4'),
+          dir,
+          value: cover,
+          signal: controller.signal,
+          ...context,
+        });
+        const verification = { ...output.verification, cover: summary };
+        await fs.writeFile(
+          path.join(dir, 'verification.json'),
+          JSON.stringify(verification, null, 2),
+        );
+        output = {
+          ...output,
+          dir,
+          path: path.join(dir, 'tutorial.mp4'),
+          cover: summary,
+          coverContext: context,
+          verification,
+          coverUpdatedAt: new Date().toISOString(),
+        };
+      }
+      if (controller.signal.aborted) throw Error('封面更新已取消');
+      const previous = { cover: p.cover, coverRevision: p.coverRevision, output: p.output };
+      Object.assign(p, { cover, coverRevision: (p.coverRevision || 0) + 1, output });
+      try {
+        await this.store.save({ ...p, job: null });
+      } catch (e) {
+        Object.assign(p, previous);
+        throw e;
+      }
+      dir = null;
+      this.publish(p, {
+        ...previousProgress,
+        stage: output ? '封面已更新，视频时长与字幕保持一致' : '封面设置已保存，制作时自动应用',
+      });
+      return p;
+    } catch (error) {
+      this.publish(p, previousProgress);
+      throw error;
+    } finally {
+      p.job = null;
+      this.controllers.delete(id);
+      if (dir) await fs.rm(dir, { recursive: true, force: true });
+      this.publish(p);
+    }
+  }
   async confirm(id, hash, revision, expectedBrandingHash, expectedExportHash) {
     const p = this.store.get(id);
     if (revision != null && revision !== p.revision) throw Error('项目已更新，请重新审核当前版本');
@@ -503,6 +585,7 @@ class Engine extends EventEmitter {
           throw Error('原始素材已变更，请重新导入和确认：' + source.name);
         }
       await require('./branding.cjs').verifyBranding(p.branding);
+      await require('./cover.cjs').verifyCover(p.cover);
       const dir = path.join(this.store.dir(id), 'output-r' + p.revision);
       await fs.mkdir(dir, { recursive: true });
       const voices = path.join(this.store.dir(id), 'voices');
@@ -561,6 +644,7 @@ class Engine extends EventEmitter {
         script: p.script,
         audio,
         branding: p.branding,
+        cover: p.cover,
         exportOptions: p.exportOptions,
         config,
         dir,
@@ -574,6 +658,15 @@ class Engine extends EventEmitter {
         verification: result.verification,
         plan: result.plan,
         completedAt: new Date().toISOString(),
+        cover: result.cover,
+        coverContext: {
+          script: { title: p.script.title, chapters: p.script.chapters },
+          info: p.info,
+          style: config.style,
+          branding: p.branding,
+          exportOptions: p.exportOptions,
+          canvas: result.verification.canvas,
+        },
       };
       p.status = 'done';
       this.publish(p, { percent: 100, stage: '视频和文件已保存' });

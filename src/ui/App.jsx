@@ -64,6 +64,8 @@ import Activity from './vendor/tutor/agent-activity-1';
 import SettingsPanel from './SettingsPanel';
 import BrandingPanel from './BrandingPanel';
 import ExportPanel, { ExportPreview } from './ExportPanel';
+import CoverPanel from './CoverPanel';
+import { COVER_DEFAULTS } from '../cover-options.mjs';
 import { normalizeExportOptions, exportSummary } from '../export-options.mjs';
 import { brandingDefaults, brandingSummary } from '../branding-options.mjs';
 import StreamOutput from './StreamOutput';
@@ -748,6 +750,7 @@ function VideoPanel({
   onSave,
   onReveal,
   onExportOptions,
+  onCover,
   sourceTime = 0,
   sourceId,
   outputTime = 0,
@@ -807,7 +810,10 @@ function VideoPanel({
           key={
             project.id +
             (output
-              ? 'output-' + (project.output?.completedAt || project.output?.revision)
+              ? 'output-' +
+                (project.output?.coverUpdatedAt ||
+                  project.output?.completedAt ||
+                  project.output?.revision)
               : source.id)
           }
           ref={ref}
@@ -815,17 +821,30 @@ function VideoPanel({
             output
               ? endpoint(project, 'output') +
                 '?v=' +
-                encodeURIComponent(project.output?.completedAt || project.output?.revision)
+                encodeURIComponent(
+                  project.output?.coverUpdatedAt ||
+                    project.output?.completedAt ||
+                    project.output?.revision,
+                )
               : sourceEndpoint(project, { source_id: source.id })
           }
           controls
+          poster={
+            output && project.output?.cover?.enabled
+              ? endpoint(project, 'output') +
+                '?file=cover.jpg&v=' +
+                encodeURIComponent(project.output?.coverUpdatedAt || project.output?.completedAt)
+              : undefined
+          }
           preload="auto"
           onLoadedMetadata={() => {
-            ref.current.currentTime = output
+            const targetTime = output
               ? outputTime
               : source.id === sourceId
                 ? Math.min(sourceTime, source.info.duration - 0.04)
                 : 0;
+            if (targetTime > 0 && !(output && project.output?.cover?.enabled))
+              ref.current.currentTime = targetTime;
           }}
           onTimeUpdate={() => setTime(ref.current?.currentTime || 0)}
         />
@@ -858,6 +877,11 @@ function VideoPanel({
               <CheckCircle2 size={15} /> {finishedCurrent ? '你的教程已完成' : '已保存的历史成片'}
             </span>
             <div className="export-save-actions">
+              {onCover && (
+                <Button variant="outline" size="sm" onClick={onCover} disabled={!!project.job}>
+                  视频封面
+                </Button>
+              )}
               {onExportOptions && (
                 <Button
                   variant="outline"
@@ -876,6 +900,7 @@ function VideoPanel({
           </div>
           <div className="export-files">
             {[
+              ...(project.output.cover?.enabled ? [['cover.jpg', '封面', 'JPG']] : []),
               ['subtitles.srt', '字幕', 'SRT'],
               ['script.json', '剧本', 'JSON'],
               ['edit-plan.json', '剪辑时间表', 'JSON'],
@@ -971,6 +996,9 @@ export default function App({ account, refreshAccount, logout, accountPending })
   const [brandingSection, setBrandingSection] = useState('frame');
   const [exportDraft, setExportDraft] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [coverDraft, setCoverDraft] = useState(null);
+  const [coverUploading, setCoverUploading] = useState(false);
   const [inspection, setInspection] = useState(null);
   const [importDraftReady, setImportDraftReady] = useState(false);
   const [sourceName, setSourceName] = useState('');
@@ -1621,6 +1649,31 @@ export default function App({ account, refreshAccount, logout, accountPending })
           : '导出画布已应用，审核后制作所选比例的成片。',
       );
     });
+  const showCover = () => {
+    if (!coverOpen)
+      setCoverDraft({
+        id: project.id,
+        revision: project.revision,
+        coverRevision: project.coverRevision || 0,
+        value: { ...COVER_DEFAULTS, ...project.cover },
+      });
+    setCoverOpen(true);
+  };
+  const saveCover = () =>
+    perform(async () => {
+      const p = await api(endpoint({ id: coverDraft.id }, 'cover-settings'), {
+        cover: coverDraft.value,
+        revision: coverDraft.revision,
+        coverRevision: coverDraft.coverRevision,
+      });
+      updateProject(p);
+      setCoverOpen(false);
+      toast.success(
+        p.output
+          ? '封面已更新，视频与字幕时序保持一致，无需重新制作。'
+          : '封面设置已保存，制作时自动生成。',
+      );
+    });
   const saveBranding = () =>
     perform(async () => {
       const p = await api(endpoint({ id: brandingDraft.id }, 'branding'), {
@@ -1693,6 +1746,13 @@ export default function App({ account, refreshAccount, logout, accountPending })
       }
     }
     const guideTarget = GUIDE_TARGETS[guideIntent.feature];
+    if (guideTarget?.surface === 'cover') {
+      if (project) showCover();
+      else {
+        focus('.video-dropzone');
+        toast('先导入视频创建教程，再设置封面。当前导入草稿会保留。');
+      }
+    }
     if (guideTarget?.surface === 'branding') {
       if (project) showBranding(guideTarget.section);
       else {
@@ -2258,6 +2318,14 @@ export default function App({ account, refreshAccount, logout, accountPending })
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={showCover}
+                        disabled={busy || pending}
+                      >
+                        视频封面
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={showBranding}
                         disabled={busy || pending}
                       >
@@ -2352,6 +2420,7 @@ export default function App({ account, refreshAccount, logout, accountPending })
                         )?.offset || 0
                       }
                       onSave={saveVideo}
+                      onCover={showCover}
                       onReveal={reveal}
                       onExportOptions={() => showExportOptions(true)}
                     />
@@ -2568,6 +2637,51 @@ export default function App({ account, refreshAccount, logout, accountPending })
           )}
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={coverOpen}
+        onOpenChange={(open) => {
+          if (!pending && !coverUploading) setCoverOpen(open);
+        }}
+      >
+        <DialogContent className="cover-dialog">
+          <DialogHeader>
+            <DialogTitle>视频封面</DialogTitle>
+            <DialogDescription>
+              自动生成带标题的封面，或上传自己的设计。封面独立于片头片尾，已有成片可以直接更新。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="cover-dialog-body">
+            {coverDraft && (
+              <CoverPanel
+                project={projects.find((p) => p.id === coverDraft.id) || project}
+                value={coverDraft.value}
+                setValue={(value) => setCoverDraft({ ...coverDraft, value })}
+                disabled={pending}
+                onBusy={setCoverUploading}
+              />
+            )}
+          </div>
+          <div className="cover-dialog-footer">
+            <Button
+              variant="outline"
+              disabled={pending || coverUploading}
+              onClick={() => setCoverOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={
+                pending ||
+                coverUploading ||
+                (coverDraft?.value.mode === 'image' && !coverDraft.value.path)
+              }
+              onClick={saveCover}
+            >
+              {pending ? '正在应用封面…' : project?.output ? '保存并更新成片封面' : '保存封面设置'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
         <DialogContent className="branding-dialog">
           <DialogHeader>
@@ -2781,6 +2895,10 @@ export default function App({ account, refreshAccount, logout, accountPending })
                   ?.offset || 0
               }
               onSave={saveVideo}
+              onCover={() => {
+                setFullscreenOpen(false);
+                showCover();
+              }}
               onReveal={reveal}
               onExportOptions={() => {
                 setFullscreenOpen(false);

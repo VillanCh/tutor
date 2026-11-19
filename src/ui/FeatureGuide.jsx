@@ -44,9 +44,19 @@ const ICONS = {
 };
 
 function FeatureVisual({ feature }) {
-  if (['background', 'layout', 'transition', 'header'].includes(feature.visual))
+  if (['background', 'layout', 'transition', 'header', 'cover'].includes(feature.visual))
     return (
       <div className={'guide-custom-visual guide-custom-' + feature.visual} aria-hidden="true">
+        {feature.visual === 'cover' && (
+          <>
+            <div className="guide-transition-mini">
+              <small>COVER / JPG</small>
+              <strong>用标题，说清这堂课。</strong>
+              <span>自动生成 / 自己上传</span>
+            </div>
+            <span>已有成片直接更新 · 不增加时长</span>
+          </>
+        )}
         {feature.visual === 'background' && (
           <>
             <div className="guide-background-swatches">
@@ -290,7 +300,7 @@ export default function FeatureGuide({
                   </DialogTitle>
                   <DialogDescription>
                     {updated
-                      ? '背景、排版、过场与品牌栏，都有具体入口和操作步骤。选择一张卡片查看怎么用，再直接进入对应设置。'
+                      ? '背景、排版、过场、品牌栏与视频封面，都有具体入口和操作步骤。选择一张卡片查看怎么用，再直接进入对应设置。'
                       : '先了解能做什么，再按步骤开始。每张卡片都有具体用法，也能直接带你进入对应操作。'}
                   </DialogDescription>
                 </div>
